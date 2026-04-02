@@ -127,7 +127,7 @@
 // ═══════════════════════════════════════════════
 var firebaseConfig = {
   apiKey: "AIzaSyCmeGcCHO5K-jKu4UApMo_CxLhhDuzVLlc",
-  authDomain: "circularlabs-gw.firebaseapp.com",
+  authDomain: "circularlabs-gw.web.app",
   databaseURL: "https://circularlabs-gw-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "circularlabs-gw",
   storageBucket: "circularlabs-gw.firebasestorage.app",
@@ -250,9 +250,14 @@ auth.onAuthStateChanged(function(firebaseUser) {
 document.getElementById('google-login-btn').onclick = function() {
   var provider = new firebase.auth.GoogleAuthProvider();
   provider.setCustomParameters({ hd: 'circularlabs.co.kr' });
+  // GitHub Pages 등 외부 호스팅에서는 signInWithRedirect가 더 안정적
   auth.signInWithPopup(provider).catch(function(err){
-    console.error(err);
-    showToast('로그인 실패: ' + err.message);
+    console.error('Popup failed, trying redirect:', err.code);
+    if(err.code === 'auth/unauthorized-domain' || err.code === 'auth/operation-not-supported-in-this-environment' || err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request') {
+      auth.signInWithRedirect(provider);
+    } else {
+      showToast('로그인 실패: ' + err.message);
+    }
   });
 };
 
