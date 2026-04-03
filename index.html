@@ -378,8 +378,8 @@ function renderCalendar(){
     '<div class="flex flex-col lg:flex-row gap-6 flex-1 overflow-hidden">'+
     // 나의 할 일
     '<div class="w-full lg:w-1/3 bg-white p-6 md:p-8 r35 card-shadow flex flex-col min-h-[300px] lg:min-h-0"><h2 class="font-bold text-gray-800 text-lg mb-4 flex items-center gap-2"><i class="ri-user-line text-blue-500 text-xl"></i> 나의 할 일</h2><div class="flex gap-2 mb-4"><input type="text" id="my-todo-input" placeholder="할 일 입력 후 Enter..." class="flex-1 border p-3 md:p-4 r24 text-sm outline-none focus:border-blue-500 bg-gray-50 transition" onkeypress="if(event.key===\'Enter\')addMyTodo()"><button onclick="addMyTodo()" class="bg-blue-600 text-white w-12 h-12 r24 font-bold text-xl hover:bg-blue-700 transition shrink-0">+</button></div><div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div></div>'+
-    // 팀 할 일
-    '<div class="w-full lg:w-2/3 bg-white p-6 md:p-8 r35 card-shadow flex flex-col min-h-[300px] lg:min-h-0"><div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3"><h2 class="font-bold text-gray-800 text-lg flex items-center gap-2"><i class="ri-team-fill text-rose-500 text-xl"></i> 팀 업무</h2><button onclick="openTeamTaskModal()" class="bg-rose-500 text-white px-5 py-2.5 r35 text-sm font-bold hover:bg-rose-600 transition">+ 팀 업무 등록</button></div><div id="team-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div></div>'+
+    // 프로젝트별 업무
+    '<div class="w-full lg:w-2/3 bg-white p-6 md:p-8 r35 card-shadow flex flex-col min-h-[300px] lg:min-h-0"><div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3"><h2 class="font-bold text-gray-800 text-lg flex items-center gap-2"><i class="ri-folder-3-fill text-rose-500 text-xl"></i> 프로젝트별 업무</h2><button onclick="openTeamTaskModal()" class="bg-rose-500 text-white px-5 py-2.5 r35 text-sm font-bold hover:bg-rose-600 transition">+ 업무 등록</button></div><div id="team-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div></div>'+
     '</div>';
   renderMyTodo();renderTeamTodo();
 }
@@ -398,35 +398,128 @@ function addMyTodo(){
 function toggleTodo(id,done){var ns=done?'Done':'Todo';var t=CACHE.tasks.find(function(x){return x.id===id;});if(t)t.status=ns;renderMyTodo();renderTeamTodo();FB.patch('tasks/'+id,{status:ns});}
 function deleteTodo(id){CACHE.tasks=CACHE.tasks.filter(function(x){return x.id!==id;});renderMyTodo();renderTeamTodo();FB.remove('tasks/'+id);}
 
-// 팀 할 일 (@ 멘션으로 할당)
+// 프로젝트별 업무
 function renderTeamTodo(){
   var el=document.getElementById('team-todo-list');if(!el)return;
-  var teamTasks=CACHE.tasks.filter(function(t){return t.taskType==='team';}).sort(function(a,b){return(a.status==='Done'?1:0)-(b.status==='Done'?1:0)||(b.timestamp||0)-(a.timestamp||0);});
-  if(!teamTasks.length){el.innerHTML='<p class="text-xs text-gray-400 font-bold text-center py-4">팀 업무가 없습니다.</p>';return;}
-  el.innerHTML=teamTasks.map(function(t){
-    var assigneeNames=(t.assignees||'').split(',').filter(Boolean).map(function(e){return'<span class="mention-tag">@'+getMemberName(e.trim())+'</span>';}).join(' ');
-    var isMyTask=(t.assignees||'').toLowerCase().indexOf(USER.email)>-1;
-    return'<div class="flex items-start gap-3 p-4 '+(isMyTask?'bg-blue-50 border border-blue-100':'bg-gray-50')+' r20 group hover:shadow-sm transition"><input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0 mt-0.5" '+(t.status==='Done'?'checked':'')+' onchange="toggleTodo(\''+t.id+'\',this.checked)"><div class="flex-1 min-w-0"><p class="text-sm font-bold '+(t.status==='Done'?'line-through text-gray-400':'text-gray-800')+'">'+esc(t.title)+'</p><div class="flex flex-wrap gap-1.5 mt-2">'+assigneeNames+(t.deadline?'<span class="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 r20 font-bold">'+t.deadline+'</span>':'')+'</div><p class="text-[10px] text-gray-400 mt-1">'+getMemberName(t.creator)+' · '+(t.timestamp?fmtDT(t.timestamp):'')+'</p></div>'+(t.creator&&t.creator.toLowerCase()===USER.email.toLowerCase()?'<button onclick="deleteTodo(\''+t.id+'\')" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition shrink-0"><i class="ri-delete-bin-line"></i></button>':'')+'</div>';
+  var teamTasks=CACHE.tasks.filter(function(t){return t.taskType==='team';}).sort(function(a,b){return(b.timestamp||0)-(a.timestamp||0);});
+  if(!teamTasks.length){el.innerHTML='<p class="text-xs text-gray-400 font-bold text-center py-4">등록된 업무가 없습니다.</p>';return;}
+  // 프로젝트별 그룹핑
+  var groups={};teamTasks.forEach(function(t){var pj=t.project||'미분류';if(!groups[pj])groups[pj]=[];groups[pj].push(t);});
+  var html='';
+  Object.keys(groups).forEach(function(pj){
+    var tasks=groups[pj];
+    var doneCount=tasks.filter(function(t){return t.status==='Done';}).length;
+    html+='<div class="mb-4"><div class="flex items-center gap-2 mb-2 px-1"><i class="ri-folder-3-fill text-rose-400 text-sm"></i><span class="text-xs font-black text-gray-600 uppercase tracking-wider">'+esc(pj)+'</span><span class="text-[10px] text-gray-400 font-bold ml-auto">'+doneCount+'/'+tasks.length+' 완료</span></div>';
+    tasks.forEach(function(t){
+      var assigneeNames=(t.assignees||'').split(',').filter(Boolean).map(function(e){return'<span class="mention-tag">@'+getMemberName(e.trim())+'</span>';}).join(' ');
+      var isMyTask=(t.assignees||'').toLowerCase().indexOf(USER.email)>-1;
+      var subItems=t.checklist||[];
+      var subDone=subItems.filter(function(x){return x.done;}).length;
+      var hasChecklist=subItems.length>0;
+      html+='<div class="'+(isMyTask?'bg-blue-50 border border-blue-100':'bg-gray-50 border border-gray-100')+' r20 overflow-hidden mb-2 hover:shadow-sm transition">'+
+        '<div class="flex items-start gap-3 p-4 cursor-pointer" onclick="openTaskDetail(\''+t.id+'\')">'+
+        '<input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0 mt-0.5" '+(t.status==='Done'?'checked':'')+' onclick="event.stopPropagation();toggleTodo(\''+t.id+'\',this.checked)">'+
+        '<div class="flex-1 min-w-0">'+
+        '<p class="text-sm font-bold '+(t.status==='Done'?'line-through text-gray-400':'text-gray-800')+'">'+esc(t.title)+'</p>'+
+        '<div class="flex flex-wrap gap-1.5 mt-2">'+assigneeNames+(t.deadline?'<span class="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 r20 font-bold">'+t.deadline+'</span>':'')+(hasChecklist?'<span class="text-[10px] bg-violet-100 text-violet-600 px-2 py-0.5 r20 font-bold"><i class="ri-checkbox-line"></i> '+subDone+'/'+subItems.length+'</span>':'')+'</div>'+
+        '<p class="text-[10px] text-gray-400 mt-1">'+getMemberName(t.creator)+' · '+(t.timestamp?fmtDT(t.timestamp):'')+'</p>'+
+        '</div>'+
+        '<i class="ri-arrow-right-s-line text-gray-300 text-xl shrink-0 mt-1"></i>'+
+        '</div></div>';
+    });
+    html+='</div>';
+  });
+  el.innerHTML=html;
+}
+
+// 업무 상세 (체크리스트 관리)
+function openTaskDetail(id){
+  var t=CACHE.tasks.find(function(x){return x.id===id;});if(!t)return;
+  var items=t.checklist||[];
+  var assigneeNames=(t.assignees||'').split(',').filter(Boolean).map(function(e){return'<span class="mention-tag">@'+getMemberName(e.trim())+'</span>';}).join(' ');
+  renderModalRoot('task-detail-modal',
+    '<div class="bg-white r35 modal-content max-w-lg p-8 md:p-10 shadow-2xl fade-in relative">'+
+    '<button onclick="closeModal(\'task-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button>'+
+    '<div class="flex items-center gap-3 mb-2"><span class="text-[10px] bg-rose-100 text-rose-600 px-3 py-1 r20 font-black">'+(t.project||'미분류')+'</span>'+statusBadge(t.status==='Done'?'완료':'진행중')+'</div>'+
+    '<h2 class="text-xl md:text-2xl font-black text-gray-900 mb-3 pr-10">'+esc(t.title)+'</h2>'+
+    '<div class="flex flex-wrap gap-1.5 mb-4">'+assigneeNames+(t.deadline?'<span class="text-xs bg-gray-100 text-gray-600 px-3 py-1 r20 font-bold">마감: '+t.deadline+'</span>':'')+'</div>'+
+    '<p class="text-[10px] text-gray-400 mb-6">등록: '+getMemberName(t.creator)+' · '+(t.timestamp?fmtDT(t.timestamp):'')+'</p>'+
+    // 체크리스트 영역
+    '<div class="border-t border-gray-100 pt-5">'+
+    '<div class="flex items-center justify-between mb-4"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2"><i class="ri-checkbox-multiple-fill text-violet-500"></i> 세부 할 일</h3><span id="td-cl-progress" class="text-xs font-black text-violet-600"></span></div>'+
+    '<div id="td-cl-bar" class="progress-bar mb-4"><div id="td-cl-fill" class="progress-fill" style="background:linear-gradient(90deg,#8b5cf6,#6366f1);width:0%"></div></div>'+
+    '<div id="td-checklist-list" class="space-y-2 mb-4 max-h-[300px] overflow-y-auto hide-scrollbar"></div>'+
+    '<div class="flex gap-2"><input type="text" id="td-new-item" placeholder="할 일 항목 추가..." class="flex-1 border p-3 r20 text-sm outline-none bg-gray-50 focus:border-violet-400 transition" onkeypress="if(event.key===\'Enter\')addTaskChecklistItem(\''+t.id+'\')"><button onclick="addTaskChecklistItem(\''+t.id+'\')" class="bg-violet-600 text-white px-5 py-3 r20 text-sm font-bold hover:bg-violet-700 transition shrink-0">추가</button></div>'+
+    '</div></div>');
+  openModal('task-detail-modal');
+  renderTaskChecklist(t.id);
+}
+
+function renderTaskChecklist(taskId){
+  var t=CACHE.tasks.find(function(x){return x.id===taskId;});if(!t)return;
+  var items=t.checklist||[];
+  var el=document.getElementById('td-checklist-list');if(!el)return;
+  var doneCount=items.filter(function(x){return x.done;}).length;
+  var pct=items.length?Math.round(doneCount/items.length*100):0;
+  var progEl=document.getElementById('td-cl-progress');if(progEl)progEl.innerText=doneCount+'/'+items.length+' 완료';
+  var fillEl=document.getElementById('td-cl-fill');if(fillEl)fillEl.style.width=pct+'%';
+  if(!items.length){el.innerHTML='<p class="text-xs text-gray-400 font-bold text-center py-4">아직 세부 할 일이 없습니다. 아래에서 추가하세요.</p>';return;}
+  el.innerHTML=items.map(function(item,i){
+    return'<div class="flex items-start gap-3 p-3 '+(item.done?'bg-violet-50/50':'bg-gray-50')+' r20 group transition">'+
+      '<input type="checkbox" class="w-4 h-4 rounded accent-violet-600 cursor-pointer shrink-0 mt-0.5" '+(item.done?'checked':'')+' onchange="toggleTaskChecklist(\''+taskId+'\','+i+',this.checked)">'+
+      '<div class="flex-1 min-w-0"><span class="text-sm '+(item.done?'line-through text-gray-400 font-normal':'font-bold text-gray-700')+'">'+esc(item.text)+'</span>'+
+      (item.doneAt?'<p class="text-[10px] text-gray-400 mt-0.5">완료: '+fmtDT(item.doneAt)+'</p>':'')+
+      (item.createdAt?'<p class="text-[10px] text-gray-300 mt-0.5">등록: '+fmtDT(item.createdAt)+'</p>':'')+
+      '</div></div>';
   }).join('');
 }
 
+function addTaskChecklistItem(taskId){
+  var input=document.getElementById('td-new-item');if(!input||!input.value.trim())return;
+  var t=CACHE.tasks.find(function(x){return x.id===taskId;});if(!t)return;
+  if(!t.checklist)t.checklist=[];
+  t.checklist.push({text:input.value.trim(),done:false,createdAt:Date.now(),createdBy:USER.email});
+  input.value='';input.focus();
+  renderTaskChecklist(taskId);renderTeamTodo();
+  FB.patch('tasks/'+taskId,{checklist:t.checklist});
+}
+
+function toggleTaskChecklist(taskId,i,done){
+  var t=CACHE.tasks.find(function(x){return x.id===taskId;});if(!t||!t.checklist)return;
+  t.checklist[i].done=done;
+  if(done)t.checklist[i].doneAt=Date.now();else delete t.checklist[i].doneAt;
+  renderTaskChecklist(taskId);renderTeamTodo();
+  FB.patch('tasks/'+taskId,{checklist:t.checklist});
+}
+
 function openTeamTaskModal(){
+  // 기존 프로젝트명 추출
+  var existingProjects={};CACHE.tasks.filter(function(t){return t.taskType==='team'&&t.project;}).forEach(function(t){existingProjects[t.project]=true;});
+  // devProjects에서도 가져오기
+  CACHE.devProjects.forEach(function(p){existingProjects[p.title]=true;});
+  var projOpts=Object.keys(existingProjects).map(function(p){return'<option value="'+esc(p)+'">'+esc(p)+'</option>';}).join('');
+
   renderModalRoot('team-task-modal',
     '<div class="bg-white r35 modal-content max-w-md p-8 md:p-10 shadow-2xl fade-in">'+
-    '<h2 class="text-xl md:text-2xl font-black text-rose-600 mb-6"><i class="ri-team-fill"></i> 팀 업무 등록</h2>'+
+    '<h2 class="text-xl md:text-2xl font-black text-rose-600 mb-6"><i class="ri-folder-3-fill"></i> 프로젝트 업무 등록</h2>'+
+    '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 선택 / 새로 입력</label><div class="flex gap-2"><select id="team-task-project-select" class="flex-1 border p-3 r24 text-sm font-bold outline-none bg-gray-50" onchange="var v=this.value;document.getElementById(\'team-task-project-custom\').classList.toggle(\'hidden\',v!==\'__new__\');"><option value="">프로젝트 선택</option>'+projOpts+'<option value="__new__">+ 새 프로젝트 입력</option></select></div><input id="team-task-project-custom" type="text" placeholder="새 프로젝트명 입력" class="hidden w-full border p-3 r24 mt-2 text-sm outline-none bg-gray-50 focus:border-rose-400"></div>'+
     '<input id="team-task-title" type="text" placeholder="업무 제목 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-rose-400 transition">'+
     '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">담당자 지정 (@)</label><div id="team-task-assignees" class="w-full border p-4 r24 bg-white max-h-40 overflow-y-auto space-y-2 hide-scrollbar shadow-inner"></div></div>'+
-    '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">마감일</label><input id="team-task-deadline" type="date" class="w-full border p-4 r24 outline-none text-sm focus:border-rose-400"></div>'+
+    '<div class="mb-6"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">마감일</label><input id="team-task-deadline" type="date" class="w-full border p-4 r24 outline-none text-sm focus:border-rose-400"></div>'+
     '<div class="flex justify-end gap-3"><button onclick="closeModal(\'team-task-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button onclick="submitTeamTask()" class="px-8 py-3.5 bg-rose-600 text-white r35 text-sm font-bold shadow-lg hover:bg-rose-700 transition">등록</button></div></div>');
   openModal('team-task-modal');
   populateAssignees('team-task-assignees','');
 }
 function submitTeamTask(){
   var title=document.getElementById('team-task-title').value.trim();if(!title)return showToast("제목을 입력하세요.");
+  var projSel=document.getElementById('team-task-project-select').value;
+  var projCustom=document.getElementById('team-task-project-custom').value.trim();
+  var project=projSel==='__new__'?projCustom:(projSel||'미분류');
+  if(!project)return showToast("프로젝트를 선택하거나 입력하세요.");
   var assignees=getChecked('team-task-assignees'),deadline=document.getElementById('team-task-deadline').value;
   if(!assignees)return showToast("담당자를 지정하세요.");
-  var id=genId();var obj={id:id,taskType:'team',project:'팀',category:'업무',title:title,assignees:assignees,priority:'Medium',deadline:deadline,content:'',status:'Todo',creator:USER.email,timestamp:Date.now()};
-  CACHE.tasks.push(obj);closeModal('team-task-modal');renderTeamTodo();showToast("팀 업무 등록 완료!");FB.set('tasks/'+id,obj);
+  var id=genId();var obj={id:id,taskType:'team',project:project,category:'업무',title:title,assignees:assignees,priority:'Medium',deadline:deadline,content:'',status:'Todo',creator:USER.email,checklist:[],timestamp:Date.now()};
+  CACHE.tasks.push(obj);closeModal('team-task-modal');renderTeamTodo();showToast("업무 등록 완료!");FB.set('tasks/'+id,obj);
 }
 
 // 일정 모달 (구글 연동 제거)
@@ -520,15 +613,58 @@ function renderApproval(){
 }
 
 function openApprovalModal(){
-  // 1차 결재권자 = 내 팀의 팀장 자동 지정
   var myLeader=getTeamLeader(USER.dept);
   var admins=CACHE.members.filter(function(m){return isApprover(m);});
   var opts=admins.map(function(x){var pos=getMemberPosition(x);return'<option value="'+x.email+'" '+(x.email===myLeader?'selected':'')+'>'+x.name+' ('+x.dept+' · '+pos+')</option>';}).join('');
-  renderModalRoot('approval-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in flex flex-col"><h2 class="text-xl md:text-2xl font-black mb-6 border-b pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 text-gray-800"><span><i class="ri-bank-card-fill text-blue-500 mr-2"></i> 지출결의서 작성</span><button onclick="addApprItemRow()" class="bg-gray-900 text-white px-5 py-2.5 r35 text-sm font-bold">+ 항목 추가</button></h2><div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-gray-50 p-5 r35 border border-gray-100"><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">1차 결재권자</label><select id="appr-approver1" class="w-full border p-3 r24 text-sm font-bold text-blue-700 bg-white outline-none">'+opts+'</select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">2차 결재권자</label><select id="appr-approver2" class="w-full border p-3 r24 text-sm font-bold text-blue-700 bg-white outline-none"><option value="">지정안함</option>'+opts+'</select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">입금 요청일 *</label><input id="appr-date" type="date" class="w-full border p-3 r24 text-sm font-bold bg-white outline-none"></div></div><div id="appr-items-container" class="space-y-4 flex-1 overflow-y-auto pr-2 min-h-[200px] hide-scrollbar"></div><div class="flex justify-end gap-3 mt-6 pt-4 border-t"><button onclick="closeModal(\'approval-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button id="btn-submit-appr" onclick="submitApprovalBulk()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">결재 올리기</button></div></div>');
+  renderModalRoot('approval-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in flex flex-col"><h2 class="text-xl md:text-2xl font-black mb-6 border-b pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 text-gray-800"><span><i class="ri-bank-card-fill text-blue-500 mr-2"></i> 지출결의서 작성</span><button onclick="addApprItemRow()" class="bg-gray-900 text-white px-5 py-2.5 r35 text-sm font-bold">+ 항목 추가</button></h2><div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-gray-50 p-5 r35 border border-gray-100"><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">1차 결재권자</label><select id="appr-approver1" class="w-full border p-3 r24 text-sm font-bold text-blue-700 bg-white outline-none">'+opts+'</select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">2차 결재권자</label><select id="appr-approver2" class="w-full border p-3 r24 text-sm font-bold text-blue-700 bg-white outline-none"><option value="">지정안함</option>'+opts+'</select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2 flex items-center justify-between"><span>입금 요청일 *</span><label class="flex items-center gap-1.5 cursor-pointer text-red-500"><input type="checkbox" id="appr-is-urgent" onchange="toggleApprUrgent()" class="w-4 h-4 accent-red-500"> <span class="text-xs font-bold">긴급</span></label></label><input id="appr-date" type="date" disabled class="w-full border p-3 r24 text-sm font-bold bg-gray-100 outline-none cursor-not-allowed text-gray-500"><div id="appr-urgent-warning" class="hidden mt-2 bg-red-50 border border-red-200 text-red-600 text-xs font-bold p-3 r20 flex items-start gap-2"><i class="ri-error-warning-fill text-base shrink-0"></i><span>긴급 지출은 결재권자의 일정에 따라 <b>반려될 수 있습니다.</b> 반드시 사전에 결재권자와 협의 후 신청해 주세요.</span></div></div></div><div id="appr-items-container" class="space-y-4 flex-1 overflow-y-auto pr-2 min-h-[200px] hide-scrollbar"></div><div class="flex justify-end gap-3 mt-6 pt-4 border-t"><button onclick="closeModal(\'approval-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button id="btn-submit-appr" onclick="submitApprovalBulk()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">결재 올리기</button></div></div>');
   openModal('approval-modal');addApprItemRow();
-  var d2=new Date();var y2=d2.getFullYear(),mo=d2.getMonth()+2;if(mo>12){mo=1;y2++;}var dateEl=document.getElementById('appr-date');if(dateEl)dateEl.value=y2+'-'+pad(mo)+'-10';
+  // 기본 입금일 = 익월 10일
+  var d2=new Date();var y2=d2.getFullYear(),mo=d2.getMonth()+2;if(mo>12){mo=1;y2++;}
+  var dateEl=document.getElementById('appr-date');if(dateEl)dateEl.value=y2+'-'+pad(mo)+'-10';
 }
-function addApprItemRow(){var bankOpts='<option value="">은행</option><option>국민은행</option><option>신한은행</option><option>우리은행</option><option>하나은행</option><option>농협은행</option><option>기업은행</option><option>카카오뱅크</option><option>토스뱅크</option><option>기타</option>';var html='<div class="appr-item-row bg-gray-50 border border-gray-100 p-5 r35 relative"><button onclick="this.parentElement.remove()" class="absolute top-4 right-4 text-gray-300 hover:text-red-500"><i class="ri-close-circle-fill text-xl"></i></button><div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3"><select class="appr-reason-select border p-3 r24 text-sm font-bold outline-none" onchange="var c=this.closest(\'.appr-item-row\').querySelector(\'.appr-reason-custom\');c.classList.toggle(\'hidden\',this.value!==\'기타\');"><option value="">사유 선택</option><option value="식대">식대</option><option value="교통/유류비">교통/유류비</option><option value="사무용품/비품">사무용품</option><option value="기타">기타</option></select><input type="text" class="appr-reason-custom hidden border p-3 r24 text-sm outline-none" placeholder="상세 사유"></div><div class="grid grid-cols-1 md:grid-cols-3 gap-3"><select class="appr-bank border p-3 r24 text-sm font-bold outline-none">'+bankOpts+'</select><input type="text" class="appr-account border p-3 r24 text-sm font-bold" placeholder="계좌번호"><input type="number" class="appr-amount border p-3 r24 text-base font-black text-green-600" placeholder="금액(원)"></div></div>';var c2=document.getElementById('appr-items-container');if(c2)c2.insertAdjacentHTML('beforeend',html);}
+function toggleApprUrgent(){
+  var isUrgent=document.getElementById('appr-is-urgent').checked;
+  var dateEl=document.getElementById('appr-date');
+  var warn=document.getElementById('appr-urgent-warning');
+  if(isUrgent){
+    dateEl.disabled=false;dateEl.classList.remove('bg-gray-100','cursor-not-allowed','text-gray-500');dateEl.classList.add('bg-white','border-red-300','text-red-600');
+    if(warn)warn.classList.remove('hidden');
+  }else{
+    // 다시 익월 10일로 복원
+    var d2=new Date();var y2=d2.getFullYear(),mo=d2.getMonth()+2;if(mo>12){mo=1;y2++;}
+    dateEl.value=y2+'-'+pad(mo)+'-10';
+    dateEl.disabled=true;dateEl.classList.add('bg-gray-100','cursor-not-allowed','text-gray-500');dateEl.classList.remove('bg-white','border-red-300','text-red-600');
+    if(warn)warn.classList.add('hidden');
+  }
+}
+function addApprItemRow(){
+  var bankOpts='<option value="">은행</option><option>국민은행</option><option>신한은행</option><option>우리은행</option><option>하나은행</option><option>농협은행</option><option>기업은행</option><option>카카오뱅크</option><option>토스뱅크</option><option>기타</option>';
+  var html='<div class="appr-item-row bg-gray-50 border border-gray-100 p-5 r35 relative">'+
+    '<button onclick="this.parentElement.remove()" class="absolute top-4 right-4 text-gray-300 hover:text-red-500"><i class="ri-close-circle-fill text-xl"></i></button>'+
+    // 지출 사유
+    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">지출 사유</label>'+
+    '<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">'+
+    '<select class="appr-reason-select border p-3 r24 text-sm font-bold outline-none bg-white" onchange="var row=this.closest(\'.appr-item-row\');row.querySelector(\'.appr-reason-custom\').classList.toggle(\'hidden\',this.value!==\'기타\');">'+
+    '<option value="">분류 선택 *</option><option value="식대">식대</option><option value="교통/유류비">교통/유류비</option><option value="사무용품/비품">사무용품/비품</option><option value="소프트웨어/구독">소프트웨어/구독</option><option value="회의비">회의비</option><option value="접대비">접대비</option><option value="출장비">출장비</option><option value="기타">기타</option></select>'+
+    '<input type="text" class="appr-reason-custom hidden border p-3 r24 text-sm outline-none bg-white" placeholder="기타 사유 입력"></div>'+
+    // 상세 내역
+    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">상세 내역</label>'+
+    '<input type="text" class="appr-detail w-full border p-3 r24 text-sm outline-none bg-white mb-3" placeholder="예: 4/3 점심 팀 회식 5명, 택시비 강남→판교, AWS 월 구독료 등">'+
+    // 결제 수단
+    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">결제 수단</label>'+
+    '<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">'+
+    '<select class="appr-pay-method border p-3 r24 text-sm font-bold outline-none bg-white">'+
+    '<option value="법인카드">법인카드</option><option value="개인카드 (환급)">개인카드 (환급)</option><option value="현금 (환급)">현금 (환급)</option><option value="계좌이체">계좌이체</option></select>'+
+    '<input type="text" class="appr-pay-detail border p-3 r24 text-sm outline-none bg-white" placeholder="카드번호 뒤 4자리 / 참고사항"></div>'+
+    // 입금 계좌 & 금액
+    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">입금 정보</label>'+
+    '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">'+
+    '<select class="appr-bank border p-3 r24 text-sm font-bold outline-none bg-white">'+bankOpts+'</select>'+
+    '<input type="text" class="appr-account border p-3 r24 text-sm font-bold bg-white" placeholder="계좌번호">'+
+    '<input type="number" class="appr-amount border p-3 r24 text-base font-black text-green-600 bg-white" placeholder="금액(원)"></div>'+
+    '</div>';
+  var c2=document.getElementById('appr-items-container');if(c2)c2.insertAdjacentHTML('beforeend',html);
+}
 function submitApprovalBulk(){
   var a1=document.getElementById('appr-approver1')?document.getElementById('appr-approver1').value:'';
   var a2=document.getElementById('appr-approver2')?document.getElementById('appr-approver2').value:'';
@@ -536,12 +672,13 @@ function submitApprovalBulk(){
   if(!a1||!date){showToast("1차 결재권자와 입금일 필수");return;}
   var rows=document.querySelectorAll('.appr-item-row');if(!rows.length){showToast("최소 1항목 필요");return;}
   var valid=true;
-  rows.forEach(function(row){var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;var reason=rs==='기타'?rc:rs;var bank=row.querySelector('.appr-bank').value,account=row.querySelector('.appr-account').value,amount=row.querySelector('.appr-amount').value;if(!reason||!bank||!account||!amount){showToast("모든 칸 입력 필수");valid=false;}});
+  rows.forEach(function(row){var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;var reason=rs==='기타'?rc:rs;var bank=row.querySelector('.appr-bank').value,account=row.querySelector('.appr-account').value,amount=row.querySelector('.appr-amount').value;if(!reason||!bank||!account||!amount){showToast("사유, 은행, 계좌, 금액은 필수입니다");valid=false;}});
   if(!valid)return;
-  rows.forEach(function(row){var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;var reason=rs==='기타'?rc:rs;var id=genId();var obj={id:id,reason:reason,bank:row.querySelector('.appr-bank').value,account:row.querySelector('.appr-account').value,amount:row.querySelector('.appr-amount').value,approver1:a1,approver2:a2||'',date:date,drafter:USER.email,drafterName:USER.name,status:'대기',dateCreated:Date.now()};CACHE.approval.push(obj);FB.set('approvals/'+id,obj);});
+  var isUrgent=document.getElementById('appr-is-urgent').checked;
+  rows.forEach(function(row){var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;var reason=rs==='기타'?rc:rs;var detail=row.querySelector('.appr-detail')?row.querySelector('.appr-detail').value:'';var payMethod=row.querySelector('.appr-pay-method')?row.querySelector('.appr-pay-method').value:'';var payDetail=row.querySelector('.appr-pay-detail')?row.querySelector('.appr-pay-detail').value:'';var id=genId();var obj={id:id,reason:reason,detail:detail,payMethod:payMethod,payDetail:payDetail,bank:row.querySelector('.appr-bank').value,account:row.querySelector('.appr-account').value,amount:row.querySelector('.appr-amount').value,approver1:a1,approver2:a2||'',date:date,isUrgent:isUrgent,drafter:USER.email,drafterName:USER.name,status:'대기',dateCreated:Date.now()};CACHE.approval.push(obj);FB.set('approvals/'+id,obj);});
   closeModal('approval-modal');showToast("제출 완료!");updateBadges();renderApproval();
 }
-function openApprovalDetail(id){var d=CACHE.approval.find(function(x){return String(x.id)===String(id);});if(!d)return;var btns='';if((d.drafter||'').toLowerCase()===USER.email&&d.status==='대기')btns='<button onclick="withdrawApprovalAction(\''+d.id+'\')" class="px-6 py-3 bg-gray-200 text-gray-700 r35 text-sm font-bold">기안 철회</button>';else if(d.status==='대기'&&(d.approver1||'').toLowerCase()===USER.email){var ns=d.approver2?'1차 승인':'최종 승인';btns='<button onclick="openRejectModal(\''+d.id+'\',\'approval\')" class="px-6 py-3 border border-red-200 text-red-600 r35 text-sm font-bold">반려</button><button onclick="actionApproval(\''+d.id+'\',\''+ns+'\')" class="px-6 py-3 bg-black text-white r35 text-sm font-bold shadow-lg">'+ns+'</button>';}else if(d.status==='1차 승인'&&(d.approver2||'').toLowerCase()===USER.email)btns='<button onclick="openRejectModal(\''+d.id+'\',\'approval\')" class="px-6 py-3 border border-red-200 text-red-600 r35 text-sm font-bold">반려</button><button onclick="actionApproval(\''+d.id+'\',\'최종 승인\')" class="px-6 py-3 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">최종 승인</button>';renderModalRoot('approval-detail-modal','<div class="bg-white r35 modal-content max-w-2xl p-8 md:p-10 shadow-2xl relative fade-in"><button onclick="closeModal(\'approval-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-xl md:text-2xl font-black mb-6 border-b pb-4 text-gray-800">지출 결재 상세</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-6 bg-gray-50 p-6 r35"><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">항목</span><span class="font-bold text-gray-800 text-lg">'+esc(d.reason)+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">금액</span><span class="font-black text-blue-600 text-xl">₩'+Number(d.amount).toLocaleString()+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">기안자</span><span class="font-bold">'+d.drafterName+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">상태</span>'+statusBadge(d.status)+'</div><div class="md:col-span-2"><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">은행/계좌</span><span class="font-bold text-gray-700">'+esc(d.bank)+' '+esc(d.account)+'</span></div>'+(d.rejectReason?'<div class="md:col-span-2"><span class="text-red-500 font-bold block mb-1 text-xs">반려 사유</span><span class="bg-red-50 text-red-600 p-3 r20 font-bold block">'+esc(d.rejectReason)+'</span></div>':'')+'</div><div class="flex justify-end gap-3 mt-6 border-t pt-4">'+btns+'</div></div>');openModal('approval-detail-modal');}
+function openApprovalDetail(id){var d=CACHE.approval.find(function(x){return String(x.id)===String(id);});if(!d)return;var btns='';if((d.drafter||'').toLowerCase()===USER.email&&d.status==='대기')btns='<button onclick="withdrawApprovalAction(\''+d.id+'\')" class="px-6 py-3 bg-gray-200 text-gray-700 r35 text-sm font-bold">기안 철회</button>';else if(d.status==='대기'&&(d.approver1||'').toLowerCase()===USER.email){var ns=d.approver2?'1차 승인':'최종 승인';btns='<button onclick="openRejectModal(\''+d.id+'\',\'approval\')" class="px-6 py-3 border border-red-200 text-red-600 r35 text-sm font-bold">반려</button><button onclick="actionApproval(\''+d.id+'\',\''+ns+'\')" class="px-6 py-3 bg-black text-white r35 text-sm font-bold shadow-lg">'+ns+'</button>';}else if(d.status==='1차 승인'&&(d.approver2||'').toLowerCase()===USER.email)btns='<button onclick="openRejectModal(\''+d.id+'\',\'approval\')" class="px-6 py-3 border border-red-200 text-red-600 r35 text-sm font-bold">반려</button><button onclick="actionApproval(\''+d.id+'\',\'최종 승인\')" class="px-6 py-3 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">최종 승인</button>';renderModalRoot('approval-detail-modal','<div class="bg-white r35 modal-content max-w-2xl p-8 md:p-10 shadow-2xl relative fade-in"><button onclick="closeModal(\'approval-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-xl md:text-2xl font-black mb-6 border-b pb-4 text-gray-800">지출 결재 상세'+(d.isUrgent?' <span class="text-sm bg-red-100 text-red-600 px-3 py-1 r20 font-bold ml-2">긴급</span>':'')+'</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-6 bg-gray-50 p-6 r35"><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">항목</span><span class="font-bold text-gray-800 text-lg">'+esc(d.reason)+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">금액</span><span class="font-black text-blue-600 text-xl">₩'+Number(d.amount).toLocaleString()+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">기안자</span><span class="font-bold">'+d.drafterName+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">상태</span>'+statusBadge(d.status)+'</div>'+(d.detail?'<div class="md:col-span-2"><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">상세 내역</span><span class="font-bold text-gray-700 bg-white p-3 r20 block border">'+esc(d.detail)+'</span></div>':'')+(d.payMethod?'<div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">결제 수단</span><span class="font-bold text-gray-700">'+esc(d.payMethod)+(d.payDetail?' · '+esc(d.payDetail):'')+'</span></div>':'')+'<div'+(d.payMethod?'':' class="md:col-span-2"')+'><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">은행/계좌</span><span class="font-bold text-gray-700">'+esc(d.bank)+' '+esc(d.account)+'</span></div>'+(d.rejectReason?'<div class="md:col-span-2"><span class="text-red-500 font-bold block mb-1 text-xs">반려 사유</span><span class="bg-red-50 text-red-600 p-3 r20 font-bold block">'+esc(d.rejectReason)+'</span></div>':'')+'</div><div class="flex justify-end gap-3 mt-6 border-t pt-4">'+btns+'</div></div>');openModal('approval-detail-modal');}
 function withdrawApprovalAction(id){openCustomConfirm("기안 철회","철회하시겠습니까?",function(){var d=CACHE.approval.find(function(x){return x.id===id;});if(d)d.status='철회';FB.patch('approvals/'+id,{status:'철회'});closeModal('approval-detail-modal');showToast("철회 완료");updateBadges();renderApproval();});}
 function actionApproval(id,s){var d=CACHE.approval.find(function(x){return x.id===id;});if(!d)return;openCustomConfirm("결재 승인","["+s+"] 처리하시겠습니까?",function(){d.status=s;FB.patch('approvals/'+id,{status:s});closeModal('approval-detail-modal');showToast("승인 완료");updateBadges();renderApproval();});}
 function openRejectModal(id,type){renderModalRoot('reject-modal','<div class="bg-white r35 modal-content max-w-md p-8 md:p-10 shadow-2xl fade-in text-center"><div class="text-red-500 text-5xl mb-4"><i class="ri-close-circle-fill"></i></div><h2 class="text-xl font-black mb-3 text-red-600">반려 사유 입력</h2><textarea id="reject-reason-input" rows="4" placeholder="반려 사유" class="w-full border p-4 r24 outline-none text-sm mb-6 bg-gray-50"></textarea><div class="flex justify-center gap-3"><button onclick="closeModal(\'reject-modal\')" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="confirmReject(\''+id+'\',\''+type+'\')" class="px-6 py-3 bg-red-600 text-white r35 text-sm font-bold shadow-lg">반려 확정</button></div></div>');openModal('reject-modal');}
