@@ -545,35 +545,34 @@ function toggleApprUrgent(){
     if(warn)warn.classList.add('hidden');
   }
 }
+// ▼ 기존 addApprItemRow 함수를 지우고 아래 코드로 덮어쓰세요 ▼
 function addApprItemRow(){
   var bankOpts='<option value="">은행</option><option>국민은행</option><option>신한은행</option><option>우리은행</option><option>하나은행</option><option>농협은행</option><option>기업은행</option><option>카카오뱅크</option><option>토스뱅크</option><option>기타</option>';
-  var html='<div class="appr-item-row bg-gray-50 border border-gray-100 p-5 r35 relative">'+
+  var html='<div class="appr-item-row bg-gray-50 border border-gray-100 p-5 r35 relative mb-3">'+
     '<button onclick="this.parentElement.remove()" class="absolute top-4 right-4 text-gray-300 hover:text-red-500"><i class="ri-close-circle-fill text-xl"></i></button>'+
-    // 지출 사유
     '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">지출 사유</label>'+
     '<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">'+
     '<select class="appr-reason-select border p-3 r24 text-sm font-bold outline-none bg-white" onchange="var row=this.closest(\'.appr-item-row\');row.querySelector(\'.appr-reason-custom\').classList.toggle(\'hidden\',this.value!==\'기타\');">'+
     '<option value="">분류 선택 *</option><option value="식대">식대</option><option value="교통/유류비">교통/유류비</option><option value="사무용품/비품">사무용품/비품</option><option value="소프트웨어/구독">소프트웨어/구독</option><option value="회의비">회의비</option><option value="접대비">접대비</option><option value="출장비">출장비</option><option value="기타">기타</option></select>'+
     '<input type="text" class="appr-reason-custom hidden border p-3 r24 text-sm outline-none bg-white" placeholder="기타 사유 입력"></div>'+
-    // 상세 내역
     '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">상세 내역</label>'+
     '<input type="text" class="appr-detail w-full border p-3 r24 text-sm outline-none bg-white mb-3" placeholder="예: 4/3 점심 팀 회식 5명, 택시비 강남→판교, AWS 월 구독료 등">'+
-    // 결제 수단
     '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">결제 수단</label>'+
     '<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">'+
     '<select class="appr-pay-method border p-3 r24 text-sm font-bold outline-none bg-white">'+
     '<option value="법인카드">법인카드</option><option value="개인카드 (환급)">개인카드 (환급)</option><option value="현금 (환급)">현금 (환급)</option><option value="계좌이체">계좌이체</option></select>'+
     '<input type="text" class="appr-pay-detail border p-3 r24 text-sm outline-none bg-white" placeholder="카드번호 뒤 4자리 / 참고사항"></div>'+
-    // 입금 계좌 & 금액
-    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">입금 정보</label>'+
-    '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">'+
+    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">입금 정보 및 영수증 첨부</label>'+
+    '<div class="grid grid-cols-1 md:grid-cols-4 gap-3">'+
     '<select class="appr-bank border p-3 r24 text-sm font-bold outline-none bg-white">'+bankOpts+'</select>'+
     '<input type="text" class="appr-account border p-3 r24 text-sm font-bold bg-white" placeholder="계좌번호">'+
-    '<input type="number" class="appr-amount border p-3 r24 text-base font-black text-green-600 bg-white" placeholder="금액(원)"></div>'+
-    '</div>';
+    '<input type="number" class="appr-amount border p-3 r24 text-base font-black text-green-600 bg-white" placeholder="금액(원)">'+
+    '<div class="flex items-center bg-white border p-2 r24 overflow-hidden"><i class="ri-image-add-line text-gray-400 ml-2 mr-2"></i><input type="file" class="appr-file text-xs w-full outline-none" accept="image/*,application/pdf"></div>'+
+    '</div></div>';
   var c2=document.getElementById('appr-items-container');if(c2)c2.insertAdjacentHTML('beforeend',html);
 }
-function submitApprovalBulk(){
+// ▼ 기존 submitApprovalBulk 함수를 지우고 아래 코드로 덮어쓰세요 ▼
+async function submitApprovalBulk(){
   var a1=document.getElementById('appr-approver1')?document.getElementById('appr-approver1').value:'';
   var a2=document.getElementById('appr-approver2')?document.getElementById('appr-approver2').value:'';
   var date=document.getElementById('appr-date')?document.getElementById('appr-date').value:'';
@@ -583,10 +582,55 @@ function submitApprovalBulk(){
   rows.forEach(function(row){var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;var reason=rs==='기타'?rc:rs;var bank=row.querySelector('.appr-bank').value,account=row.querySelector('.appr-account').value,amount=row.querySelector('.appr-amount').value;if(!reason||!bank||!account||!amount){showToast("사유, 은행, 계좌, 금액은 필수입니다");valid=false;}});
   if(!valid)return;
   var isUrgent=document.getElementById('appr-is-urgent').checked;
-  rows.forEach(function(row){var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;var reason=rs==='기타'?rc:rs;var detail=row.querySelector('.appr-detail')?row.querySelector('.appr-detail').value:'';var payMethod=row.querySelector('.appr-pay-method')?row.querySelector('.appr-pay-method').value:'';var payDetail=row.querySelector('.appr-pay-detail')?row.querySelector('.appr-pay-detail').value:'';var id=genId();var obj={id:id,reason:reason,detail:detail,payMethod:payMethod,payDetail:payDetail,bank:row.querySelector('.appr-bank').value,account:row.querySelector('.appr-account').value,amount:row.querySelector('.appr-amount').value,approver1:a1,approver2:a2||'',date:date,isUrgent:isUrgent,drafter:USER.email,drafterName:USER.name,status:'대기',dateCreated:Date.now()};CACHE.approval.push(obj);FB.set('approvals/'+id,obj);});
+
+  // 파일 업로드를 위해 잠시 버튼 잠금 및 안내 메시지 띄우기
+  var btn = document.getElementById('btn-submit-appr');
+  if(btn) { btn.disabled = true; btn.innerText = "⏳ 파일 업로드 중..."; }
+  showToast("저장 중입니다... 잠시만 기다려주세요.");
+
+  for(var i=0; i<rows.length; i++) {
+    var row = rows[i];
+    var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;
+    var reason=rs==='기타'?rc:rs;
+    var detail=row.querySelector('.appr-detail')?row.querySelector('.appr-detail').value:'';
+    var payMethod=row.querySelector('.appr-pay-method')?row.querySelector('.appr-pay-method').value:'';
+    var payDetail=row.querySelector('.appr-pay-detail')?row.querySelector('.appr-pay-detail').value:'';
+    var fileInput=row.querySelector('.appr-file');
+    var fileUrl = '';
+
+    // 사진(파일)이 있으면 파이어베이스 스토리지에 업로드
+    if(fileInput && fileInput.files[0]) {
+      try {
+        var file = fileInput.files[0];
+        var storageRef = firebase.storage().ref('receipts/' + Date.now() + '_' + file.name);
+        await storageRef.put(file);
+        fileUrl = await storageRef.getDownloadURL();
+      } catch(e) {
+        console.log("파일 업로드 에러:", e);
+        showToast("파일 업로드 실패! 텍스트만 저장됩니다.");
+      }
+    }
+
+    var id=genId();
+    var obj={id:id,reason:reason,detail:detail,payMethod:payMethod,payDetail:payDetail,bank:row.querySelector('.appr-bank').value,account:row.querySelector('.appr-account').value,amount:row.querySelector('.appr-amount').value,approver1:a1,approver2:a2||'',date:date,isUrgent:isUrgent,drafter:USER.email,drafterName:USER.name,status:'대기',dateCreated:Date.now(), fileUrl: fileUrl};
+    CACHE.approval.push(obj);
+    await db.ref('approvals/'+id).set(obj);
+  }
+  
+  if(btn) { btn.disabled = false; btn.innerText = "결재 올리기"; }
   closeModal('approval-modal');showToast("제출 완료!");updateBadges();renderApproval();
 }
-function openApprovalDetail(id){var d=CACHE.approval.find(function(x){return String(x.id)===String(id);});if(!d)return;var btns='';if((d.drafter||'').toLowerCase()===USER.email&&d.status==='대기')btns='<button onclick="withdrawApprovalAction(\''+d.id+'\')" class="px-6 py-3 bg-gray-200 text-gray-700 r35 text-sm font-bold">기안 철회</button>';else if(d.status==='대기'&&(d.approver1||'').toLowerCase()===USER.email){var ns=d.approver2?'1차 승인':'최종 승인';btns='<button onclick="openRejectModal(\''+d.id+'\',\'approval\')" class="px-6 py-3 border border-red-200 text-red-600 r35 text-sm font-bold">반려</button><button onclick="actionApproval(\''+d.id+'\',\''+ns+'\')" class="px-6 py-3 bg-black text-white r35 text-sm font-bold shadow-lg">'+ns+'</button>';}else if(d.status==='1차 승인'&&(d.approver2||'').toLowerCase()===USER.email)btns='<button onclick="openRejectModal(\''+d.id+'\',\'approval\')" class="px-6 py-3 border border-red-200 text-red-600 r35 text-sm font-bold">반려</button><button onclick="actionApproval(\''+d.id+'\',\'최종 승인\')" class="px-6 py-3 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">최종 승인</button>';renderModalRoot('approval-detail-modal','<div class="bg-white r35 modal-content max-w-2xl p-8 md:p-10 shadow-2xl relative fade-in"><button onclick="closeModal(\'approval-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-xl md:text-2xl font-black mb-6 border-b pb-4 text-gray-800">지출 결재 상세'+(d.isUrgent?' <span class="text-sm bg-red-100 text-red-600 px-3 py-1 r20 font-bold ml-2">긴급</span>':'')+'</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-6 bg-gray-50 p-6 r35"><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">항목</span><span class="font-bold text-gray-800 text-lg">'+esc(d.reason)+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">금액</span><span class="font-black text-blue-600 text-xl">₩'+Number(d.amount).toLocaleString()+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">기안자</span><span class="font-bold">'+d.drafterName+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">상태</span>'+statusBadge(d.status)+'</div>'+(d.detail?'<div class="md:col-span-2"><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">상세 내역</span><span class="font-bold text-gray-700 bg-white p-3 r20 block border">'+esc(d.detail)+'</span></div>':'')+(d.payMethod?'<div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">결제 수단</span><span class="font-bold text-gray-700">'+esc(d.payMethod)+(d.payDetail?' · '+esc(d.payDetail):'')+'</span></div>':'')+'<div'+(d.payMethod?'':' class="md:col-span-2"')+'><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">은행/계좌</span><span class="font-bold text-gray-700">'+esc(d.bank)+' '+esc(d.account)+'</span></div>'+(d.rejectReason?'<div class="md:col-span-2"><span class="text-red-500 font-bold block mb-1 text-xs">반려 사유</span><span class="bg-red-50 text-red-600 p-3 r20 font-bold block">'+esc(d.rejectReason)+'</span></div>':'')+'</div><div class="flex justify-end gap-3 mt-6 border-t pt-4">'+btns+'</div></div>');openModal('approval-detail-modal');}
+// ▼ 기존 openApprovalDetail 함수를 지우고 아래 코드로 덮어쓰세요 ▼
+function openApprovalDetail(id){
+  var d=CACHE.approval.find(function(x){return String(x.id)===String(id);});if(!d)return;
+  var btns='';
+  if((d.drafter||'').toLowerCase()===USER.email&&d.status==='대기')btns='<button onclick="withdrawApprovalAction(\''+d.id+'\')" class="px-6 py-3 bg-gray-200 text-gray-700 r35 text-sm font-bold">기안 철회</button>';
+  else if(d.status==='대기'&&(d.approver1||'').toLowerCase()===USER.email){var ns=d.approver2?'1차 승인':'최종 승인';btns='<button onclick="openRejectModal(\''+d.id+'\',\'approval\')" class="px-6 py-3 border border-red-200 text-red-600 r35 text-sm font-bold">반려</button><button onclick="actionApproval(\''+d.id+'\',\''+ns+'\')" class="px-6 py-3 bg-black text-white r35 text-sm font-bold shadow-lg">'+ns+'</button>';}
+  else if(d.status==='1차 승인'&&(d.approver2||'').toLowerCase()===USER.email)btns='<button onclick="openRejectModal(\''+d.id+'\',\'approval\')" class="px-6 py-3 border border-red-200 text-red-600 r35 text-sm font-bold">반려</button><button onclick="actionApproval(\''+d.id+'\',\'최종 승인\')" class="px-6 py-3 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">최종 승인</button>';
+  
+  renderModalRoot('approval-detail-modal','<div class="bg-white r35 modal-content max-w-2xl p-8 md:p-10 shadow-2xl relative fade-in"><button onclick="closeModal(\'approval-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-xl md:text-2xl font-black mb-6 border-b pb-4 text-gray-800">지출 결재 상세'+(d.isUrgent?' <span class="text-sm bg-red-100 text-red-600 px-3 py-1 r20 font-bold ml-2">긴급</span>':'')+'</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-6 bg-gray-50 p-6 r35"><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">항목</span><span class="font-bold text-gray-800 text-lg">'+esc(d.reason)+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">금액</span><span class="font-black text-blue-600 text-xl">₩'+Number(d.amount).toLocaleString()+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">기안자</span><span class="font-bold">'+d.drafterName+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">상태</span>'+statusBadge(d.status)+'</div>'+(d.detail?'<div class="md:col-span-2"><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">상세 내역</span><span class="font-bold text-gray-700 bg-white p-3 r20 block border">'+esc(d.detail)+'</span></div>':'')+(d.payMethod?'<div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">결제 수단</span><span class="font-bold text-gray-700">'+esc(d.payMethod)+(d.payDetail?' · '+esc(d.payDetail):'')+'</span></div>':'')+'<div'+(d.payMethod?'':' class="md:col-span-2"')+'><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">은행/계좌</span><span class="font-bold text-gray-700">'+esc(d.bank)+' '+esc(d.account)+'</span></div>'+(d.fileUrl?'<div class="md:col-span-2 mt-2"><span class="text-gray-400 font-bold block mb-2 text-xs uppercase"><i class="ri-attachment-line"></i> 첨부 영수증 / 파일</span><a href="'+d.fileUrl+'" target="_blank" class="inline-block border r20 bg-white hover:border-blue-400 p-2 overflow-hidden w-full max-w-[300px] bg-gray-100 flex justify-center"><img src="'+d.fileUrl+'" class="max-h-48 object-contain" onerror="this.outerHTML=\'<span class=\\\'text-blue-600 font-bold underline p-4 block\\\'>📄 영수증/PDF 보기 (클릭)</span>\'"></a></div>':'')+(d.rejectReason?'<div class="md:col-span-2"><span class="text-red-500 font-bold block mb-1 text-xs">반려 사유</span><span class="bg-red-50 text-red-600 p-3 r20 font-bold block">'+esc(d.rejectReason)+'</span></div>':'')+'</div><div class="flex justify-end gap-3 mt-6 border-t pt-4">'+btns+'</div></div>');
+  openModal('approval-detail-modal');
+}
 function withdrawApprovalAction(id){openCustomConfirm("기안 철회","철회하시겠습니까?",function(){var d=CACHE.approval.find(function(x){return x.id===id;});if(d)d.status='철회';FB.patch('approvals/'+id,{status:'철회'});closeModal('approval-detail-modal');showToast("철회 완료");updateBadges();renderApproval();});}
 function actionApproval(id,s){var d=CACHE.approval.find(function(x){return x.id===id;});if(!d)return;openCustomConfirm("결재 승인","["+s+"] 처리하시겠습니까?",function(){d.status=s;FB.patch('approvals/'+id,{status:s});closeModal('approval-detail-modal');showToast("승인 완료");updateBadges();renderApproval();});}
 function openRejectModal(id,type){renderModalRoot('reject-modal','<div class="bg-white r35 modal-content max-w-md p-8 md:p-10 shadow-2xl fade-in text-center"><div class="text-red-500 text-5xl mb-4"><i class="ri-close-circle-fill"></i></div><h2 class="text-xl font-black mb-3 text-red-600">반려 사유 입력</h2><textarea id="reject-reason-input" rows="4" placeholder="반려 사유" class="w-full border p-4 r24 outline-none text-sm mb-6 bg-gray-50"></textarea><div class="flex justify-center gap-3"><button onclick="closeModal(\'reject-modal\')" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="confirmReject(\''+id+'\',\''+type+'\')" class="px-6 py-3 bg-red-600 text-white r35 text-sm font-bold shadow-lg">반려 확정</button></div></div>');openModal('reject-modal');}
