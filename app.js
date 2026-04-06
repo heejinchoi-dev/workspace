@@ -26,6 +26,99 @@ function canDelete() {
   return USER.role === 'ADMIN' || USER.role === '팀장' || USER.role === '센터장' || USER.position === '팀장';
 }
 
+/*═══════════ @멘션 (Mention) 시스템 ═══════════*/
+function setupMention(elId) {
+  var el = document.getElementById(elId);
+  if(!el) return;
+  el.addEventListener('input', function(e) {
+    var val = e.target.value;
+    var cursor = e.target.selectionStart;
+    var lastAt = val.lastIndexOf('@', cursor - 1);
+    if (lastAt !== -1 && (lastAt === 0 || val[lastAt - 1] === ' ' || val[lastAt - 1] === '\n')) {
+      var query = val.substring(lastAt + 1, cursor);
+      if (!query.includes(' ')) { showMentionPopup(el, query, lastAt); } else { hideMentionPopup(); }
+    } else { hideMentionPopup(); }
+  });
+  el.addEventListener('click', hideMentionPopup);
+  el.addEventListener('blur', function() { setTimeout(hideMentionPopup, 200); });
+}
+
+function showMentionPopup(el, query, atPos) {
+  var matched = CACHE.members.filter(m => m.name.toLowerCase().includes(query.toLowerCase()));
+  if (matched.length === 0) return hideMentionPopup();
+  var pop = document.getElementById('mention-popup') || document.createElement('div');
+  pop.id = 'mention-popup';
+  pop.className = 'fixed bg-white border shadow-2xl r20 w-48 z-[200] overflow-hidden max-h-48';
+  document.body.appendChild(pop);
+  var rect = el.getBoundingClientRect();
+  pop.style.left = rect.left + 'px';
+  pop.style.top = (window.scrollY + rect.top - pop.offsetHeight - 5) + 'px';
+  pop.innerHTML = matched.map(m => `<div onmousedown="insertMention('${el.id}', '${m.name}', ${atPos})" class="p-3 hover:bg-blue-50 cursor-pointer flex items-center gap-2 border-b border-gray-50"><div class="w-6 h-6 rounded-full bg-blue-500 text-white text-[9px] flex items-center justify-center font-black">${m.name[0]}</div><div class="flex-1 min-w-0"><p class="text-xs font-bold text-gray-800 truncate">${m.name}</p><p class="text-[9px] text-gray-400">${m.dept}</p></div></div>`).join('');
+  pop.classList.remove('hidden');
+}
+
+function insertMention(elId, name, atPos) {
+  var el = document.getElementById(elId);
+  var val = el.value;
+  el.value = val.substring(0, atPos) + '@' + name + ' ' + val.substring(el.selectionStart);
+  hideMentionPopup(); el.focus();
+}
+function hideMentionPopup() { var pop = document.getElementById('mention-popup'); if(pop) pop.classList.add('hidden'); }
+
+/* === (이후 나머지 함수들을 하나씩 복사해서 정리하시면 완벽합니다) === */
+
+// 2. 멘션 팝업 띄우기
+function showMentionPopup(el, query, atPos) {
+  var matched = CACHE.members.filter(m => m.name.toLowerCase().includes(query.toLowerCase()));
+  if (matched.length === 0) return hideMentionPopup();
+
+  var pop = document.getElementById('mention-popup');
+  if(!pop) {
+    pop = document.createElement('div');
+    pop.id = 'mention-popup';
+    pop.className = 'fixed bg-white border border-gray-200 shadow-2xl r20 w-48 z-[200] overflow-hidden overflow-y-auto max-h-48';
+    document.body.appendChild(pop);
+  }
+  
+  var rect = el.getBoundingClientRect();
+  // 입력창의 위치에 따라 팝업 위치 자동 조절
+  pop.style.left = rect.left + 'px';
+  pop.style.top = (window.scrollY + rect.top - pop.offsetHeight - 5) + 'px'; 
+  if(rect.top < 200) pop.style.top = (window.scrollY + rect.bottom + 5) + 'px';
+
+  pop.innerHTML = matched.map(m => `
+    <div onmousedown="insertMention('${el.id}', '${m.name}', ${atPos})" class="p-3 hover:bg-blue-50 cursor-pointer flex items-center gap-2 border-b last:border-0 border-gray-50">
+      <div class="w-6 h-6 rounded-full bg-blue-500 text-white text-[9px] flex items-center justify-center font-black">${m.name[0]}</div>
+      <div class="flex-1 min-w-0">
+        <p class="text-xs font-bold text-gray-800 truncate">${m.name}</p>
+        <p class="text-[9px] text-gray-400 uppercase">${m.dept}</p>
+      </div>
+    </div>
+  `).join('');
+  pop.classList.remove('hidden');
+}
+
+// 3. 선택한 이름 본문에 삽입
+function insertMention(elId, name, atPos) {
+  var el = document.getElementById(elId);
+  var val = el.value;
+  var before = val.substring(0, atPos);
+  var after = val.substring(el.selectionStart);
+  
+  el.value = before + '@' + name + ' ' + (after.startsWith(' ') ? after.substring(1) : after);
+  hideMentionPopup();
+  el.focus();
+  
+  // 커서를 이름 뒤로 이동
+  var newPos = atPos + name.length + 2;
+  el.setSelectionRange(newPos, newPos);
+}
+
+function hideMentionPopup() {
+  var pop = document.getElementById('mention-popup');
+  if(pop) pop.classList.add('hidden');
+}
+
 /*═══════════ Assignee Picker (드롭다운 + 검색) ═══════════*/
 function populateAssignees(cId,sel){
   var el=document.getElementById(cId);if(!el)return;
@@ -206,41 +299,102 @@ function showNoticePopup(content){renderModalRoot('global-notice-modal','<div cl
 // ═══════════════════════════════════════════════
 //  대시보드
 // ═══════════════════════════════════════════════
-// 기존 renderDashboard() 함수 내부를 아래처럼 덮어씌워 주세요.
-function renderDashboard(){
-  var li=CACHE.leaveInfo,today=new Date();today.setHours(0,0,0,0);
-  var ac=CACHE.approval.filter(function(d){return((d.approver1||'').toLowerCase()===USER.email&&d.status==='대기')||((d.approver2||'').toLowerCase()===USER.email&&d.status==='1차 승인');}).length;
-  var inP=CACHE.tasks.filter(function(t){return(t.assignees||'').toLowerCase().indexOf(USER.email)>-1&&t.status==='In Progress';}).length;
-  var nc=buildNotifications().length;
-  var urgentTasks=CACHE.tasks.filter(function(t){if(!t.deadline||t.status==='Done')return false;return Math.ceil((new Date(t.deadline)-today)/86400000)<=3;}).sort(function(a,b){return new Date(a.deadline)-new Date(b.deadline);});
-  var ongoing=CACHE.devProjects.filter(function(p){return p.status!=='배포완료'&&p.status!=='보류';});
-  var d=new Date(),dateStr=d.getFullYear()+'년 '+(d.getMonth()+1)+'월 '+d.getDate()+'일 '+'일월화수목금토'[d.getDay()]+'요일';
-  
-  // 사내 퀵링크 렌더링 및 추가 버튼
-  var qlHtml = (CACHE.quickLinks||[]).map(function(q){
-    return '<a href="'+q.url+'" target="_blank" class="flex flex-col items-center justify-center p-4 bg-white border border-gray-100 hover:border-blue-300 r24 shadow-sm hover:shadow-md transition group"><i class="'+esc(q.icon||'ri-link')+' text-2xl text-blue-500 mb-2 group-hover:scale-110 transition"></i><span class="text-xs font-bold text-gray-700 w-full text-center truncate">'+esc(q.name)+'</span></a>';
+/*═══════════ 대시보드 (완전 통합본) ═══════════*/
+var deptChart = null; // 차트 중복 생성 방지용 변수
+var taskStatusChart = null;
+
+/*═══════════ 대시보드 (완벽 정리본) ═══════════*/
+var deptChart = null; // 차트 중복 생성 방지용 전역 변수
+var taskStatusChart = null;
+
+function renderDashboard() {
+  var li = CACHE.leaveInfo, today = new Date(); today.setHours(0, 0, 0, 0);
+  var ac = CACHE.approval.filter(function(d) { return ((d.approver1 || '').toLowerCase() === USER.email && d.status === '대기') || ((d.approver2 || '').toLowerCase() === USER.email && d.status === '1차 승인'); }).length;
+  var inP = CACHE.tasks.filter(function(t) { return (t.assignees || '').toLowerCase().indexOf(USER.email) > -1 && t.status === 'In Progress'; }).length;
+  var nc = buildNotifications().length;
+  var urgentTasks = CACHE.tasks.filter(function(t) { if (!t.deadline || t.status === 'Done') return false; return Math.ceil((new Date(t.deadline) - today) / 86400000) <= 3; }).sort(function(a, b) { return new Date(a.deadline) - new Date(b.deadline); });
+  var ongoing = CACHE.devProjects.filter(function(p) { return p.status !== '배포완료' && p.status !== '보류'; });
+  var d = new Date(), dateStr = d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + '일월화수목금토'[d.getDay()] + '요일';
+
+  // 1. 사내 퀵링크 렌더링 데이터 준비
+  var qlHtml = (CACHE.quickLinks || []).map(function(q) {
+    return '<a href="' + q.url + '" target="_blank" class="flex flex-col items-center justify-center p-4 bg-white border border-gray-100 hover:border-blue-300 r24 shadow-sm hover:shadow-md transition group"><i class="' + esc(q.icon || 'ri-link') + ' text-2xl text-blue-500 mb-2 group-hover:scale-110 transition"></i><span class="text-xs font-bold text-gray-700 w-full text-center truncate">' + esc(q.name) + '</span></a>';
   }).join('');
   qlHtml += '<div onclick="openQuickLinkModal()" class="flex flex-col items-center justify-center p-4 bg-gray-50 border border-dashed border-gray-300 hover:border-blue-300 hover:bg-blue-50 r24 cursor-pointer transition group"><i class="ri-add-line text-2xl text-gray-400 mb-2 group-hover:text-blue-500 transition"></i><span class="text-xs font-bold text-gray-500 group-hover:text-blue-600">추가하기</span></div>';
 
-  document.getElementById('tab-home').innerHTML=
-    '<div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-2"><h1 class="text-2xl md:text-4xl font-black text-gray-800 tracking-tight">좋은 하루입니다, '+esc(USER.name)+'님! 👋</h1><p class="text-sm text-gray-400 font-bold">'+dateStr+'</p></div>'+
-    '<h3 class="text-sm font-bold text-gray-800 mb-3"><i class="ri-links-fill text-blue-500"></i> 바로가기 링크</h3>'+
+  // 2. 전체 레이아웃 렌더링
+  document.getElementById('tab-home').innerHTML =
+    '<div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-2"><h1 class="text-2xl md:text-4xl font-black text-gray-800 tracking-tight">좋은 하루입니다, ' + esc(USER.name) + '님! 👋</h1><p class="text-sm text-gray-400 font-bold">' + dateStr + '</p></div>' +
+    '<h3 class="text-sm font-bold text-gray-800 mb-3"><i class="ri-links-fill text-blue-500"></i> 바로가기 링크</h3>' +
     '<div class="grid grid-cols-3 md:grid-cols-6 gap-3 mb-8">' + qlHtml + '</div>' +
-    '<div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">'+
-    '<div class="p-6 md:p-8 bg-white r35 card-shadow card-hover cursor-pointer hover:border-purple-200 border border-transparent" onclick="showTab(\'leaves\')"><h3 class="text-xs font-bold text-gray-400 uppercase mb-3">남은 연차</h3><p class="text-3xl md:text-4xl font-black text-purple-600">'+li.remain+' 일</p></div>'+
-    '<div class="p-6 md:p-8 bg-white r35 card-shadow card-hover cursor-pointer hover:border-green-200 border border-transparent" onclick="showTab(\'approval\')"><h3 class="text-xs font-bold text-gray-400 uppercase mb-3">대기 중 결재</h3><p class="text-3xl md:text-4xl font-black text-green-500">'+ac+'</p></div>'+
-    '<div class="p-6 md:p-8 bg-white r35 card-shadow card-hover cursor-pointer hover:border-rose-200 border border-transparent" onclick="showTab(\'dev\')"><h3 class="text-xs font-bold text-gray-400 uppercase mb-3">진행 중 업무</h3><p class="text-3xl md:text-4xl font-black text-rose-500">'+inP+'</p></div>'+
-    '<div class="p-6 md:p-8 bg-white r35 card-shadow card-hover cursor-pointer hover:border-blue-200 border border-transparent" onclick="openNotifModal()"><h3 class="text-xs font-bold text-gray-400 uppercase mb-3">미확인 알림</h3><p class="text-3xl md:text-4xl font-black text-blue-500">'+nc+'</p></div>'+
-    '</div>'+
-    '<div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 mb-8">'+
-    '<div class="bg-white p-6 md:p-8 r35 card-shadow"><h3 class="text-sm font-bold text-gray-800 mb-5 flex items-center gap-2"><i class="ri-pie-chart-2-fill text-emerald-500"></i> 영업 파이프라인</h3><canvas id="chart-crm" height="160"></canvas><div id="chart-crm-legend" class="mt-3 space-y-1.5"></div></div>'+
-    '<div class="bg-white p-6 md:p-8 r35 card-shadow"><h3 class="text-sm font-bold text-gray-800 mb-5 flex items-center gap-2"><i class="ri-bar-chart-fill text-blue-500"></i> 이번 달 업무 완료율</h3><canvas id="chart-tasks" height="160"></canvas><div id="chart-tasks-legend" class="mt-3"></div></div>'+
-    '<div class="bg-white p-6 md:p-8 r35 card-shadow flex flex-col"><h3 class="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="ri-alarm-warning-fill text-red-500"></i> D-day 마감 업무</h3><div class="flex-1 overflow-y-auto space-y-2 hide-scrollbar">'+(urgentTasks.length===0?'<p class="text-xs text-gray-400 font-bold text-center py-4">마감 임박 없음 🎉</p>':urgentTasks.map(function(t){var diff=Math.ceil((new Date(t.deadline)-today)/86400000);var badge=diff<0?'<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black shrink-0">D+'+Math.abs(diff)+'</span>':diff===0?'<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black shrink-0">D-day</span>':'<span class="text-[10px] bg-orange-400 text-white px-2 py-0.5 r20 font-black shrink-0">D-'+diff+'</span>';var clickAction=t.taskType==='team'?'showTab(\'calendar\');setTimeout(function(){openTaskDetail(\''+t.id+'\');},100)':'showTab(\'calendar\')';return'<div class="flex items-center gap-2 p-3 bg-gray-50 r20 hover:bg-gray-100 cursor-pointer transition" onclick="'+clickAction+'">'+badge+'<span class="flex-1 text-xs font-bold text-gray-700 truncate">'+esc(t.title)+'</span></div>';}).join(''))+'</div></div></div>'+
-    '<div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">'+
-    '<div class="bg-gradient-to-br from-indigo-900 to-indigo-700 p-8 md:p-10 r35 card-shadow h-72 flex flex-col text-white"><h3 class="text-sm font-bold text-indigo-200 mb-4 flex items-center gap-2"><i class="ri-megaphone-fill text-red-400"></i> 사내 공지</h3><div id="dash-notice" class="flex-1 overflow-y-auto text-base font-medium leading-relaxed whitespace-pre-wrap hide-scrollbar text-indigo-100">공지 없음</div></div>'+
-    '<div class="bg-white p-8 md:p-10 r35 card-shadow h-72 flex flex-col"><h3 class="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="ri-macbook-fill text-blue-500"></i> 진행 중인 개발 프로젝트</h3><div class="flex-1 overflow-y-auto space-y-3 hide-scrollbar">'+(ongoing.length===0?'<p class="text-xs text-gray-400 font-bold text-center mt-4">진행 중인 프로젝트 없음</p>':ongoing.map(function(p){return'<div class="p-4 bg-gray-50 r24 border border-gray-100 hover:border-blue-200 cursor-pointer transition" onclick="showTab(\'dev\')"><div class="flex justify-between items-center mb-2"><span class="font-black text-gray-800 text-sm truncate">'+esc(p.title)+'</span><span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 r20 font-bold shrink-0">'+p.status+'</span></div><div class="progress-bar"><div class="progress-fill" style="width:'+(p.progress||0)+'%"></div></div><p class="text-[10px] text-gray-400 mt-1 font-bold text-right">'+(p.progress||0)+'%</p></div>';}).join(''))+'</div></div></div>';
+    '<div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">' +
+    '<div class="p-6 md:p-8 bg-white r35 card-shadow card-hover cursor-pointer hover:border-purple-200 border border-transparent" onclick="showTab(\'leaves\')"><h3 class="text-xs font-bold text-gray-400 uppercase mb-3">남은 연차</h3><p class="text-3xl md:text-4xl font-black text-purple-600">' + li.remain + ' 일</p></div>' +
+    '<div class="p-6 md:p-8 bg-white r35 card-shadow card-hover cursor-pointer hover:border-green-200 border border-transparent" onclick="showTab(\'approval\')"><h3 class="text-xs font-bold text-gray-400 uppercase mb-3">대기 중 결재</h3><p class="text-3xl md:text-4xl font-black text-green-500">' + ac + '</p></div>' +
+    '<div class="p-6 md:p-8 bg-white r35 card-shadow card-hover cursor-pointer hover:border-rose-200 border border-transparent" onclick="showTab(\'dev\')"><h3 class="text-xs font-bold text-gray-400 uppercase mb-3">진행 중 업무</h3><p class="text-3xl md:text-4xl font-black text-rose-500">' + inP + '</p></div>' +
+    '<div class="p-6 md:p-8 bg-white r35 card-shadow card-hover cursor-pointer hover:border-blue-200 border border-transparent" onclick="openNotifModal()"><h3 class="text-xs font-bold text-gray-400 uppercase mb-3">미확인 알림</h3><p class="text-3xl md:text-4xl font-black text-blue-500">' + nc + '</p></div>' +
+    '</div>' +
+    '<div class="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 mb-8">' +
+    '<div class="bg-white p-6 md:p-8 r35 card-shadow"><h3 class="text-sm font-bold text-gray-800 mb-5 flex items-center gap-2"><i class="ri-pie-chart-2-fill text-emerald-500"></i> 부서별 업무 비중</h3><canvas id="deptChart" height="160"></canvas></div>' +
+    '<div class="bg-white p-6 md:p-8 r35 card-shadow"><h3 class="text-sm font-bold text-gray-800 mb-5 flex items-center gap-2"><i class="ri-bar-chart-fill text-blue-500"></i> 업무 진행 현황</h3><canvas id="taskStatusChart" height="160"></canvas></div>' +
+    '<div class="bg-white p-6 md:p-8 r35 card-shadow flex flex-col"><h3 class="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="ri-alarm-warning-fill text-red-500"></i> D-day 마감 업무</h3><div class="flex-1 overflow-y-auto space-y-2 hide-scrollbar">' + (urgentTasks.length === 0 ? '<p class="text-xs text-gray-400 font-bold text-center py-4">마감 임박 없음 🎉</p>' : urgentTasks.map(function(t) {
+      var diff = Math.ceil((new Date(t.deadline) - today) / 86400000);
+      var badge = diff < 0 ? '<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black shrink-0">D+' + Math.abs(diff) + '</span>' : diff === 0 ? '<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black shrink-0">D-day</span>' : '<span class="text-[10px] bg-orange-400 text-white px-2 py-0.5 r20 font-black shrink-0">D-' + diff + '</span>';
+      var clickAction = t.taskType === 'team' ? "showTab('calendar');setTimeout(function(){openTaskDetail('" + t.id + "');},100)" : "showTab('calendar')";
+      return '<div class="flex items-center gap-2 p-3 bg-gray-50 r20 hover:bg-gray-100 cursor-pointer transition" onclick="' + clickAction + '">' + badge + '<span class="flex-1 text-xs font-bold text-gray-700 truncate">' + esc(t.title) + '</span></div>';
+    }).join('')) + '</div></div></div>' +
+    '<div class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">' +
+    '<div class="bg-gradient-to-br from-indigo-900 to-indigo-700 p-8 md:p-10 r35 card-shadow h-72 flex flex-col text-white"><h3 class="text-sm font-bold text-indigo-200 mb-4 flex items-center gap-2"><i class="ri-megaphone-fill text-red-400"></i> 사내 공지</h3><div id="dash-notice" class="flex-1 overflow-y-auto text-base font-medium leading-relaxed whitespace-pre-wrap hide-scrollbar text-indigo-100">공지 없음</div></div>' +
+    '<div class="bg-white p-8 md:p-10 r35 card-shadow h-72 flex flex-col"><h3 class="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="ri-macbook-fill text-blue-500"></i> 진행 중인 개발 프로젝트</h3><div class="flex-1 overflow-y-auto space-y-3 hide-scrollbar">' + (ongoing.length === 0 ? '<p class="text-xs text-gray-400 font-bold text-center mt-4">진행 중인 프로젝트 없음</p>' : ongoing.map(function(p) {
+      return '<div class="p-4 bg-gray-50 r24 border border-gray-100 hover:border-blue-200 cursor-pointer transition" onclick="showTab(\'dev\')"><div class="flex justify-between items-center mb-2"><span class="font-black text-gray-800 text-sm truncate">' + esc(p.title) + '</span><span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 r20 font-bold shrink-0">' + p.status + '</span></div><div class="progress-bar"><div class="progress-fill" style="width:' + (p.progress || 0) + '%"></div></div><p class="text-[10px] text-gray-400 mt-1 font-bold text-right">' + (p.progress || 0) + '%</p></div>';
+    }).join('')) + '</div></div></div>';
+
+  // 3. 차트 실행 및 공지 로드
   renderDashCharts();
-  FB.get('notices',function(err,data){var notices=parseNode(data);var el=document.getElementById('dash-notice');if(el&&notices.length>0)el.innerText=notices[notices.length-1].content||'공지 없음';});
+  FB.get('notices', function(err, data) {
+    var notices = parseNode(data);
+    var el = document.getElementById('dash-notice');
+    if (el && notices.length > 0) el.innerText = notices[notices.length - 1].content || '공지 없음';
+  });
+}
+
+function renderDashCharts() {
+  // 부서별 비중 차트
+  var dCtx = document.getElementById('deptChart');
+  if (dCtx) {
+    if (deptChart) deptChart.destroy();
+    deptChart = new Chart(dCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['개발', '영업', '결재', 'CS'],
+        datasets: [{
+          data: [CACHE.devProjects.length, CACHE.crm.length, CACHE.approval.length, CACHE.cs.length],
+          backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b'],
+          borderWidth: 0
+        }]
+      },
+      options: { cutout: '70%', plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } } }
+    });
+  }
+
+  // 업무 상태 차트
+  var tCtx = document.getElementById('taskStatusChart');
+  if (tCtx) {
+    if (taskStatusChart) taskStatusChart.destroy();
+    var mt = CACHE.tasks.filter(function(t) { return (t.deadline || '').startsWith(new Date().toISOString().slice(0, 7)); });
+    var bS = { Todo: mt.filter(function(t) { return t.status === 'Todo'; }).length, 'In Progress': mt.filter(function(t) { return t.status === 'In Progress'; }).length, Done: mt.filter(function(t) { return t.status === 'Done'; }).length };
+    taskStatusChart = new Chart(tCtx, {
+      type: 'bar',
+      data: {
+        labels: ['대기', '진행', '완료'],
+        datasets: [{
+          data: [bS.Todo, bS['In Progress'], bS.Done],
+          backgroundColor: ['#e5e7eb', '#3b82f6', '#10b981'],
+          borderRadius: 8
+        }]
+      },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { grid: { display: false } } } }
+    });
+  }
 }
 
 // 파일 맨 아래(아무 곳이나)에 퀵링크 추가 기능 함수를 덧붙여주세요.
@@ -271,17 +425,39 @@ function renderDashCharts(){
 // ═══════════════════════════════════════════════
 //  일정 및 할 일 (구글 캘린더 연동 제거, 나의 할일 + 팀 할일)
 // ═══════════════════════════════════════════════
+var calendar = null;
+
 function renderCalendar(){
   var el=document.getElementById('tab-calendar');
-  el.innerHTML=
-    '<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3"><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-calendar-todo-fill text-rose-500 mr-2"></i> 일정 및 할 일</h1><div class="flex gap-2"><button onclick="openScheduleModal()" class="bg-rose-500 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-rose-600 transition">+ 일정 등록</button></div></div>'+
-    '<div class="flex flex-col lg:flex-row gap-6 flex-1 overflow-hidden">'+
-    // 나의 할 일
-    '<div class="w-full lg:w-1/3 bg-white p-6 md:p-8 r35 card-shadow flex flex-col min-h-[300px] lg:min-h-0"><h2 class="font-bold text-gray-800 text-lg mb-4 flex items-center gap-2"><i class="ri-user-line text-blue-500 text-xl"></i> 나의 할 일</h2><div class="flex gap-2 mb-4"><input type="text" id="my-todo-input" placeholder="할 일 입력 후 Enter..." class="flex-1 border p-3 md:p-4 r24 text-sm outline-none focus:border-blue-500 bg-gray-50 transition" onkeypress="if(event.key===\'Enter\')addMyTodo()"><button onclick="addMyTodo()" class="bg-blue-600 text-white w-12 h-12 r24 font-bold text-xl hover:bg-blue-700 transition shrink-0">+</button></div><div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div></div>'+
-    // 프로젝트별 업무
-    '<div class="w-full lg:w-2/3 bg-white p-6 md:p-8 r35 card-shadow flex flex-col min-h-[300px] lg:min-h-0"><div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3"><h2 class="font-bold text-gray-800 text-lg flex items-center gap-2"><i class="ri-folder-3-fill text-rose-500 text-xl"></i> 프로젝트별 업무</h2><button onclick="openTeamTaskModal()" class="bg-rose-500 text-white px-5 py-2.5 r35 text-sm font-bold hover:bg-rose-600 transition">+ 업무 등록</button></div><div id="team-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div></div>'+
-    '</div>';
-  renderMyTodo();renderTeamTodo();
+  el.innerHTML='<div class="flex flex-col lg:flex-row gap-6 h-full">'+
+    '<div class="w-full lg:w-80 flex flex-col gap-6">'+
+      '<div class="bg-white p-6 r35 card-shadow flex-1 overflow-y-auto">'+
+        '<h2 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="ri-user-line text-blue-500"></i> 나의 할 일</h2>'+
+        '<div class="flex gap-2 mb-4"><input type="text" id="my-todo-input" placeholder="입력..." class="flex-1 border p-3 r24 text-sm outline-none bg-gray-50" onkeypress="if(event.key===\'Enter\')addMyTodo()"><button onclick="addMyTodo()" class="bg-blue-600 text-white w-10 h-10 r24 font-bold text-xl">+</button></div>'+
+        '<div id="my-todo-list" class="space-y-2"></div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="flex-1 bg-white p-6 r35 card-shadow overflow-hidden">'+
+      '<div id="calendar-view-main" class="h-full"></div>'+
+    '</div>'+
+  '</div>';
+
+  renderMyTodo();
+  
+  // FullCalendar 초기화
+  setTimeout(function(){
+    var calendarEl = document.getElementById('calendar-view-main');
+    if(!calendarEl) return;
+    calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      locale: 'ko',
+      headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listWeek' },
+      events: CACHE.schedules.map(s => ({ title: s.title, start: s.start, end: s.end, color: s.type === '팀 회의' ? '#3b82f6' : '#ec4899' })),
+      dateClick: function(info) { openScheduleModal({start: info.dateStr}); },
+      eventClick: function(info) { /* 일정 클릭 시 수정 로직 */ }
+    });
+    calendar.render();
+  }, 100);
 }
 
 // 나의 할 일 (나만 보임)
@@ -695,6 +871,7 @@ function openCRMDetail(id){
   renderModalRoot('crm-detail-modal','<div class="bg-white r35 modal-content max-w-5xl p-0 shadow-2xl relative fade-in flex flex-col md:flex-row overflow-hidden"><button onclick="closeModal(\'crm-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black z-10"><i class="ri-close-line text-3xl"></i></button><div class="flex-1 p-8 md:p-10 overflow-y-auto"><h2 class="text-2xl md:text-3xl font-black mb-4 text-gray-900 pr-10">'+esc(d.company)+'</h2><div class="flex gap-2 mb-6"><span class="text-xs px-3 py-1 r20 font-black bg-gray-100 text-gray-600">'+(d.b2Type||'B2B')+'</span><span class="text-xs px-3 py-1 r20 font-black bg-emerald-50 text-emerald-700">'+d.status+'</span></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-gray-50 p-5 r24 text-sm"><div><span class="text-gray-400 text-xs font-bold block mb-1">담당자</span><span class="font-bold">'+esc(d.contactName||'-')+'</span></div><div><span class="text-gray-400 text-xs font-bold block mb-1">최초 거래(협력)일</span><span class="font-bold text-emerald-600">'+(d.firstDate||'미기재')+'</span></div><div><span class="text-gray-400 text-xs font-bold block mb-1">연락처</span><span class="font-bold text-blue-600">'+esc(d.phone||'-')+'</span></div></div><div class="mb-6"><p class="text-xs font-black text-gray-400 mb-2">기본 정보</p><div class="bg-gray-50 p-5 r24 whitespace-pre-wrap text-sm text-gray-700">'+esc(d.note||'비고 없음')+'</div></div><div class="flex justify-end gap-3"><button onclick="closeModal(\'crm-detail-modal\');openCRMModal(CACHE.crm.find(function(x){return x.id===\''+d.id+'\';}))" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold">수정</button><button onclick="confirmDeleteCRM(\''+d.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold">삭제</button></div></div><div class="w-full md:w-[360px] bg-gray-50 border-l p-8 flex flex-col h-[500px] md:h-auto"><h3 class="font-black text-lg mb-4 text-gray-800"><i class="ri-history-line text-emerald-500 mr-2"></i>조직 히스토리</h3><div id="crm-cmt-list" class="flex-1 overflow-y-auto space-y-3 hide-scrollbar mb-4">'+(cList.length?cList.map(function(c){return'<div class="bg-white p-4 r20 shadow-sm border border-gray-100"><div class="flex justify-between items-center mb-1"><span class="font-black text-xs text-gray-800">'+c.authorName+'</span><span class="text-[10px] text-gray-400">'+c.date+'</span></div><p class="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">'+esc(c.content)+'</p></div>';}).join(''):'<p class="text-xs text-gray-400 text-center py-10">히스토리가 없습니다.</p>')+'</div><div class="relative"><textarea id="crm-cmt-in" rows="3" placeholder="미팅 결과, 특이사항 기록..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-emerald-400 shadow-sm bg-white"></textarea><button onclick="submitCRMComment(\''+d.id+'\')" class="absolute bottom-4 right-4 bg-emerald-500 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-emerald-600 transition"><i class="ri-send-plane-fill text-sm"></i></button></div></div></div>');
   openModal('crm-detail-modal');
   var cl=document.getElementById('crm-cmt-list');if(cl)cl.scrollTop=cl.scrollHeight;
+  setTimeout(function(){ setupMention('crm-cmt-in'); }, 200);
 }
 
 function submitCRMComment(id){
@@ -1362,8 +1539,6 @@ function showSkeleton(){
   // 필요 시 로딩 스피너 로직 추가
   console.log("로딩 중...");
 }
-
-// 2. 결재 기안 철회
 function withdrawApprovalAction(id){
   openCustomConfirm("결재 철회", "해당 기안을 철회하시겠습니까?", function(){
     var d = CACHE.approval.find(function(x){return x.id === id;});
@@ -1376,19 +1551,14 @@ function withdrawApprovalAction(id){
   });
 }
 
-// 3. 결재 1차/최종 승인 처리
 function actionApproval(id, nextStatus){
   openCustomConfirm("결재 승인", nextStatus + " 처리하시겠습니까?", function(){
     var d = CACHE.approval.find(function(x){return x.id === id;});
     if(!d) return;
-    
     var updateObj = { status: nextStatus };
     if(nextStatus === '1차 승인') updateObj.approved1At = nowFmt();
     if(nextStatus === '최종 승인') updateObj.approved2At = nowFmt();
-    
     d.status = nextStatus;
-    Object.assign(d, updateObj);
-    
     FB.patch('approvals/'+id, updateObj);
     closeModal('approval-detail-modal');
     showToast(nextStatus + " 완료");
@@ -1397,26 +1567,13 @@ function actionApproval(id, nextStatus){
   });
 }
 
-// 4. 결재/휴가 반려 처리
 function openRejectModal(id, type){
   var reason = prompt("반려 사유를 입력해주세요:");
-  if(reason === null) return; // 취소 누름
-  
+  if(reason === null) return;
   var path = type === 'approval' ? 'approvals/' : 'leaves/';
-  var cacheList = type === 'approval' ? CACHE.approval : CACHE.leaves;
-  var modalId = type === 'approval' ? 'approval-detail-modal' : 'leave-detail-modal';
-  
-  var d = cacheList.find(function(x){return x.id === id;});
-  if(d){
-     d.status = '반려';
-     d.rejectReason = reason;
-  }
-  
   FB.patch(path + id, {status: '반려', rejectReason: reason});
-  closeModal(modalId);
   showToast("반려 처리되었습니다.");
   updateBadges();
-  
-  if(type === 'approval') renderApproval();
-  else renderLeaves();
+  type === 'approval' ? renderApproval() : renderLeaves();
 }
+// 끝
