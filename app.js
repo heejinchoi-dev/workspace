@@ -622,15 +622,72 @@ function renderCRMUI(data){
   });
 }
 function openCRMModal(data){
-  renderModalRoot('crm-modal','<div class="bg-white r35 modal-content max-w-lg p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black text-emerald-700 mb-6"><i class="ri-briefcase-4-fill"></i> '+(data?'고객사 수정':'고객사 등록')+'</h2><input id="crm-company" type="text" value="'+(data?esc(data.company):'')+'" placeholder="고객사/기관명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-emerald-400"><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><div><input id="crm-name" type="text" value="'+(data?esc(data.contactName||''):'')+'" placeholder="담당자 이름" class="w-full border p-4 r24 outline-none text-sm focus:border-emerald-400"></div><div><input id="crm-phone" type="text" value="'+(data?esc(data.phone||''):'')+'" placeholder="연락처" class="w-full border p-4 r24 outline-none text-sm focus:border-emerald-400"></div></div><div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">최초 거래(협력) 시작일</label><input id="crm-firstdate" type="date" value="'+(data?data.firstDate||'':'')+'" class="w-full border p-4 r24 outline-none text-sm font-bold text-emerald-600 focus:border-emerald-400"></div><select id="crm-status" class="w-full border p-4 r24 mb-4 outline-none text-sm font-bold bg-gray-50"><option value="잠재고객(Lead)" '+((!data||data.status==='잠재고객(Lead)')?'selected':'')+'>잠재고객</option><option value="연락/미팅(Contact)" '+(data&&data.status==='연락/미팅(Contact)'?'selected':'')+'>연락/미팅</option><option value="제안/견적(Proposal)" '+(data&&data.status==='제안/견적(Proposal)'?'selected':'')+'>제안/견적</option><option value="계약성공(Won)" '+(data&&data.status==='계약성공(Won)'?'selected':'')+'>계약성공</option></select><textarea id="crm-note" rows="3" placeholder="기본 비고 (히스토리는 상세페이지에서 작성)" class="w-full border p-4 r24 mb-6 outline-none text-sm focus:border-emerald-400">'+(data?esc(data.note||''):'')+'</textarea><input type="hidden" id="crm-edit-id" value="'+(data?data.id:'')+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'crm-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200">취소</button><button onclick="submitCRM()" class="px-8 py-3.5 bg-emerald-600 text-white r35 text-sm font-bold shadow-lg hover:bg-emerald-700">'+(data?'수정':'등록')+'</button></div></div>');
-  openModal('crm-modal');
+  var services = ['세척서비스', '아란테', '세척장구축컨설팅', '용기판매', '기타'];
+  var currentServices = data && data.serviceType ? data.serviceType.split(',') : [];
+  
+  var serviceHtml = services.map(s => `
+    <label class="flex items-center gap-2 cursor-pointer bg-white p-2 r20 border border-gray-100 hover:bg-gray-50 shadow-sm">
+      <input type="checkbox" class="crm-service-cb w-4 h-4 accent-emerald-500" value="${s}" ${currentServices.includes(s) ? 'checked' : ''}>
+      <span class="text-xs font-bold text-gray-700">${s}</span>
+    </label>
+  `).join('');
+
+  renderModalRoot('crm-modal','<div class="bg-white r35 modal-content max-w-lg p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black text-emerald-700 mb-6"><i class="ri-briefcase-4-fill"></i> '+(data?'고객사 수정':'고객사 등록')+'</h2>'+
+    '<input id="crm-company" type="text" value="'+(data?esc(data.company):'')+'" placeholder="고객사명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50">'+
+    '<div class="grid grid-cols-2 gap-4 mb-4"><input id="crm-name" type="text" value="'+(data?esc(data.contactName||''):'')+'" placeholder="담당자" class="border p-4 r24 outline-none text-sm"><input id="crm-phone" type="text" value="'+(data?esc(data.phone||''):'')+'" placeholder="연락처" class="border p-4 r24 outline-none text-sm"></div>'+
+    
+    // B2B/B2G/B2C 선택 (라디오)
+    '<label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2">고객 구분</label>'+
+    '<div class="flex gap-3 mb-4">'+
+      ['B2B', 'B2G', 'B2C'].map(v => `<label class="flex-1 flex items-center justify-center gap-2 p-3 border r24 cursor-pointer hover:bg-emerald-50 transition bg-white font-bold text-sm text-gray-600 has-[:checked]:border-emerald-500 has-[:checked]:text-emerald-700 has-[:checked]:bg-emerald-50"><input type="radio" name="crm-b2-type" value="${v}" class="hidden" ${data && data.b2Type === v ? 'checked' : (!data && v === 'B2B' ? 'checked' : '')}>${v}</label>`).join('')+
+    '</div>'+
+
+    // 사업 영역 (중복 체크박스)
+    '<label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2">관련 사업 (중복 선택)</label>'+
+    '<div class="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">'+serviceHtml+'</div>'+
+
+    '<select id="crm-status" class="w-full border p-4 r24 mb-4 outline-none text-sm font-bold bg-emerald-50 text-emerald-700"><option value="잠재고객(Lead)" '+((!data||data.status==='잠재고객(Lead)')?'selected':'')+'>잠재고객</option><option value="연락/미팅(Contact)" '+(data&&data.status==='연락/미팅(Contact)'?'selected':'')+'>연락/미팅</option><option value="제안/견적(Proposal)" '+(data&&data.status==='제안/견적(Proposal)'?'selected':'')+'>제안/견적</option><option value="계약성공(Won)" '+(data&&data.status==='계약성공(Won)'?'selected':'')+'>계약성공</option></select>'+
+    '<textarea id="crm-note" rows="3" placeholder="비고" class="w-full border p-4 r24 mb-6 outline-none text-sm">'+(data?esc(data.note||''):'')+'</textarea>'+
+    '<input type="hidden" id="crm-edit-id" value="'+(data?data.id:'')+'">'+
+    '<div class="flex justify-end gap-3"><button onclick="closeModal(\'crm-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitCRM()" class="px-8 py-3.5 bg-emerald-600 text-white r35 text-sm font-bold shadow-lg">'+(data?'수정':'등록')+'</button></div></div>');openModal('crm-modal');
 }
 function submitCRM(){
   var id=document.getElementById('crm-edit-id').value;
-  var comp=document.getElementById('crm-company').value.trim();if(!comp)return showToast("고객사/기관명을 입력하세요.");
-  var fields={company:comp,contactName:document.getElementById('crm-name').value,phone:document.getElementById('crm-phone').value,status:document.getElementById('crm-status').value,note:document.getElementById('crm-note').value,firstDate:document.getElementById('crm-firstdate').value,manager:USER.email};
-  if(id){var idx=CACHE.crm.findIndex(function(x){return x.id===id;});if(idx>-1)Object.assign(CACHE.crm[idx],fields);closeModal('crm-modal');showToast("수정 완료!");filterCRM();FB.patch('crm/'+id,fields);}
-  else{var newId=genId();var obj=Object.assign({id:newId},fields,{timestamp:Date.now()});CACHE.crm.push(obj);closeModal('crm-modal');showToast("등록 완료!");filterCRM();FB.set('crm/'+newId,obj);}
+  var co=document.getElementById('crm-company').value.trim();
+  if(!co)return showToast("고객사명 입력");
+  
+  // 체크된 사업 영역 가져오기
+  var selectedServices = Array.from(document.querySelectorAll('.crm-service-cb:checked')).map(cb => cb.value).join(',');
+  // 라디오에서 선택된 고객 구분 가져오기
+  var b2Type = document.querySelector('input[name="crm-b2-type"]:checked').value;
+
+  var f={
+    company: co,
+    contactName: document.getElementById('crm-name').value,
+    phone: document.getElementById('crm-phone').value,
+    b2Type: b2Type,
+    serviceType: selectedServices, // 중복 선택된 사업 영역 저장
+    status: document.getElementById('crm-status').value,
+    note: document.getElementById('crm-note').value,
+    manager: USER.email
+  };
+
+  if(id){
+    var idx=CACHE.crm.findIndex(function(x){return x.id===id;});
+    if(idx>-1)Object.assign(CACHE.crm[idx],f);
+    closeModal('crm-modal');
+    showToast("수정 완료!");
+    filterCRM();
+    FB.patch('crm/'+id,f);
+  }else{
+    var nid=genId();
+    var o=Object.assign({id:nid},f,{timestamp:Date.now()});
+    CACHE.crm.push(o);
+    closeModal('crm-modal');
+    showToast("등록 완료!");
+    filterCRM();
+    FB.set('crm/'+nid,o);
+  }
 }
 function openCRMDetail(id){
   var d=CACHE.crm.find(function(x){return String(x.id)===String(id);});if(!d)return;
@@ -884,31 +941,40 @@ async function submitApprovalBulk(){
 }
 
 function openApprovalDetail(id){
-  var d=CACHE.approval.find(function(x){return String(x.id)===String(id);});if(!d)return;
-  var btns='';
-  if((d.drafter||'').toLowerCase()===USER.email&&d.status==='대기')btns='<button onclick="withdrawApprovalAction(\''+d.id+'\')" class="px-6 py-3 bg-gray-200 text-gray-700 r35 text-sm font-bold">기안 철회</button>';
-  else if(d.status==='대기'&&(d.approver1||'').toLowerCase()===USER.email){var ns=d.approver2?'1차 승인':'최종 승인';btns='<button onclick="openRejectModal(\''+d.id+'\',\'approval\')" class="px-6 py-3 border border-red-200 text-red-600 r35 text-sm font-bold">반려</button><button onclick="actionApproval(\''+d.id+'\',\''+ns+'\')" class="px-6 py-3 bg-black text-white r35 text-sm font-bold shadow-lg">'+ns+'</button>';}
-  else if(d.status==='1차 승인'&&(d.approver2||'').toLowerCase()===USER.email)btns='<button onclick="openRejectModal(\''+d.id+'\',\'approval\')" class="px-6 py-3 border border-red-200 text-red-600 r35 text-sm font-bold">반려</button><button onclick="actionApproval(\''+d.id+'\',\'최종 승인\')" class="px-6 py-3 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">최종 승인</button>';
-  
-  // 타임라인 구성
-  var timeline='<div class="md:col-span-2 mt-2"><span class="text-gray-400 font-bold block mb-3 text-xs uppercase">결재 진행 현황</span><div class="flex items-start gap-0">';
-  // 기안
-  timeline+='<div class="flex flex-col items-center flex-1"><div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-black">✓</div><p class="text-[10px] font-black text-gray-700 mt-1">기안</p><p class="text-[10px] text-gray-400">'+esc(d.drafterName)+'</p></div>';
-  timeline+='<div class="flex-1 border-t-2 '+(d.approved1At?'border-blue-400':'border-gray-200')+' mt-4"></div>';
-  // 1차
-  var a1Done=!!d.approved1At;
-  timeline+='<div class="flex flex-col items-center flex-1"><div class="w-8 h-8 rounded-full '+(a1Done?'bg-blue-500':'bg-gray-200')+' flex items-center justify-center text-white text-xs font-black">'+(a1Done?'✓':'2')+'</div><p class="text-[10px] font-black text-gray-700 mt-1">'+(d.approver2?'1차':'최종')+'</p><p class="text-[10px] text-gray-400">'+(d.approver1Name||getMemberName(d.approver1))+'</p>'+(d.approved1At?'<p class="text-[10px] text-blue-500">'+d.approved1At+'</p>':'')+'</div>';
-  if(d.approver2){
-    timeline+='<div class="flex-1 border-t-2 '+(d.approved2At?'border-blue-400':'border-gray-200')+' mt-4"></div>';
-    var a2Done=!!d.approved2At;
-    timeline+='<div class="flex flex-col items-center flex-1"><div class="w-8 h-8 rounded-full '+(a2Done?'bg-blue-500':'bg-gray-200')+' flex items-center justify-center text-white text-xs font-black">'+(a2Done?'✓':'3')+'</div><p class="text-[10px] font-black text-gray-700 mt-1">최종</p><p class="text-[10px] text-gray-400">'+(d.approver2Name||getMemberName(d.approver2))+'</p>'+(d.approved2At?'<p class="text-[10px] text-blue-500">'+d.approved2At+'</p>':'')+'</div>';
-  }
-  timeline+='</div></div>';
-  
-  renderModalRoot('approval-detail-modal','<div class="bg-white r35 modal-content max-w-2xl p-8 md:p-10 shadow-2xl relative fade-in"><button onclick="closeModal(\'approval-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-xl md:text-2xl font-black mb-6 border-b pb-4 text-gray-800">지출 결재 상세'+(d.isUrgent?' <span class="text-sm bg-red-100 text-red-600 px-3 py-1 r20 font-bold ml-2">긴급</span>':'')+'</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-6 bg-gray-50 p-6 r35"><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">항목</span><span class="font-bold text-gray-800 text-lg">'+esc(d.reason)+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">금액</span><span class="font-black text-blue-600 text-xl">₩'+Number(d.amount).toLocaleString()+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">기안자</span><span class="font-bold">'+d.drafterName+'</span></div><div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">상태</span>'+statusBadge(d.status)+'</div>'+(d.detail?'<div class="md:col-span-2"><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">상세 내역</span><span class="font-bold text-gray-700 bg-white p-3 r20 block border">'+esc(d.detail)+'</span></div>':'')+(d.payMethod?'<div><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">결제 수단</span><span class="font-bold text-gray-700">'+esc(d.payMethod)+(d.payDetail?' · '+esc(d.payDetail):'')+'</span></div>':'')+'<div'+(d.payMethod?'':' class="md:col-span-2"')+'><span class="text-gray-400 font-bold block mb-1 text-xs uppercase">은행/계좌</span><span class="font-bold text-gray-700">'+esc(d.bank)+' '+esc(d.account)+'</span></div>'+timeline+(d.fileUrl?'<div class="md:col-span-2 mt-2"><span class="text-gray-400 font-bold block mb-2 text-xs uppercase"><i class="ri-attachment-line"></i> 첨부</span><a href="'+d.fileUrl+'" target="_blank" class="inline-block border r20 hover:border-blue-400 p-2 overflow-hidden max-w-[300px] bg-gray-100"><img src="'+d.fileUrl+'" class="max-h-48 object-contain" onerror="this.outerHTML=\'<span class=\\\'text-blue-600 font-bold underline p-4 block\\\'>📄 파일 보기</span>\'"></a></div>':'')+(d.rejectReason?'<div class="md:col-span-2"><span class="text-red-500 font-bold block mb-1 text-xs">반려 사유</span><span class="bg-red-50 text-red-600 p-3 r20 font-bold block">'+esc(d.rejectReason)+'</span></div>':'')+'</div><div class="flex justify-end gap-3 mt-6 border-t pt-4">'+btns+'</div></div>');
-  openModal('approval-detail-modal');
-}
+  var d=CACHE.approval.find(function(x){return x.id===id;});
+  if(!d)return;
 
+  // 내가 승인권자인지 확인하는 로직
+  var isMyTurn = false;
+  if (d.status === '대기' && (d.approver1 || '').toLowerCase() === USER.email.toLowerCase()) isMyTurn = true;
+  if (d.status === '1차 승인' && (d.approver2 || '').toLowerCase() === USER.email.toLowerCase()) isMyTurn = true;
+
+  var html='<div class="bg-white r35 modal-content max-w-lg p-8 shadow-2xl fade-in">' +
+    '<div class="flex justify-between items-start mb-6">' +
+      '<div>' + statusBadge(d.status) + '<h2 class="text-2xl font-black mt-2">' + esc(d.reason) + '</h2></div>' +
+      '<button onclick="closeModal(\'appr-detail-modal\')" class="text-gray-400 hover:text-gray-600 text-2xl"><i class="ri-close-line"></i></button>' +
+    '</div>' +
+    '<div class="space-y-4 mb-8">' +
+      '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">기안자</span><span class="font-black">' + d.drafterName + '</span></div>' +
+      '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">금액</span><span class="font-black text-blue-600">₩' + Number(d.amount).toLocaleString() + '</span></div>' +
+      '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">계좌정보</span><span class="text-sm">' + d.bank + ' ' + d.account + '</span></div>' +
+      '<div class="py-2"><span class="text-gray-500 font-bold block mb-1">상세내용</span><p class="text-sm bg-gray-50 p-3 r20">' + esc(d.note || '내용 없음') + '</p></div>' +
+    '</div>';
+
+  // ✅ 이 부분이 핵심입니다! 내가 승인할 차례일 때만 버튼이 나타납니다.
+  if(isMyTurn){
+    html += '<div class="grid grid-cols-2 gap-3">' +
+      '<button onclick="processAppr(\''+d.id+'\',\'반려\')" class="py-4 bg-red-50 text-red-600 r24 font-black hover:bg-red-100 transition">반려하기</button>' +
+      '<button onclick="processAppr(\''+d.id+'\',\'승인\')" class="py-4 bg-blue-600 text-white r24 font-black shadow-lg hover:bg-blue-700 transition">승인하기</button>' +
+    '</div>';
+  } else {
+    html += '<p class="text-center text-xs text-gray-400 font-bold">현재 승인 권한이 없거나 결재가 진행 중입니다.</p>';
+  }
+
+  html += '</div>';
+  renderModalRoot('appr-detail-modal', html);
+  openModal('appr-detail-modal');
+}
 
 // ═══════════════════════════════════════════════
 //  Vault
