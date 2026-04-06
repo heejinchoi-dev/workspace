@@ -68,6 +68,16 @@
       <div class="mt-6 p-5 bg-white r24 card-shadow text-xs">
         <div class="font-black text-sm mb-1 text-gray-800" id="sidebar-name"></div>
         <div class="text-gray-400 truncate mb-3" id="sidebar-email"></div>
+        
+        <div class="flex gap-2 mb-2">
+          <button onclick="toggleDarkMode()" class="flex-1 flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 transition p-3 r20 border border-gray-200 text-gray-600 font-bold text-xs" title="다크 모드">
+            <i class="ri-moon-fill"></i> 테마
+          </button>
+          <button onclick="openGlobalSearchModal()" class="flex-1 flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 transition p-3 r20 border border-gray-200 text-gray-600 font-bold text-xs" title="통합 검색 (Ctrl+K)">
+            <i class="ri-search-line"></i> 검색
+          </button>
+        </div>
+
         <button onclick="openNotifModal()" class="w-full flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition p-3 r20 border border-gray-200 mb-2">
           <span class="flex items-center gap-2 text-gray-600 font-bold text-xs"><i class="ri-notification-3-fill text-blue-500 text-base"></i> 알림 센터</span>
           <span id="notif-badge" class="hidden bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">0</span>

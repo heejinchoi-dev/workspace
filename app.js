@@ -422,9 +422,34 @@ function renderDevBoardView(data){
 
 function openDevDetail(id){
   var d=CACHE.devProjects.find(function(x){return String(x.id)===String(id);});if(!d)return;
-  renderModalRoot('dev-detail-modal','<div class="bg-white r35 modal-content max-w-2xl p-8 md:p-10 shadow-2xl fade-in relative"><button onclick="closeModal(\'dev-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-xl md:text-2xl font-black text-gray-900 mb-4 pr-10">'+priorityHtml(d.priority,'md')+' '+esc(d.title)+'</h2><div class="flex gap-2 flex-wrap mb-4">'+tagHtml(d.tags)+'<span class="text-xs px-3 py-1 r20 font-black '+(DEV_STATUS_META[d.status]||DEV_STATUS_META['보류']).badge+'">'+d.status+'</span></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-gray-50 p-5 r24 text-sm"><div><span class="text-gray-400 text-xs font-bold">기간</span><p class="font-bold text-gray-700">'+(d.start||'-')+' ~ '+(d.end||'-')+'</p></div><div><span class="text-gray-400 text-xs font-bold">진행률</span><div class="flex items-center gap-2 mt-1"><div class="flex-1 progress-bar"><div class="progress-fill" style="width:'+(d.progress||0)+'%"></div></div><span class="text-sm font-black text-blue-600">'+(d.progress||0)+'%</span></div></div><div class="md:col-span-2"><span class="text-gray-400 text-xs font-bold">담당자</span><div class="flex gap-1 mt-1">'+avatarHtml(d.assignees,8)+'</div></div></div><div class="mb-6 border-t border-gray-100 pt-5"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2 mb-3"><i class="ri-list-check-2 text-blue-500"></i> 카테고리별 세부 업무</h3><div id="dev-task-list" class="space-y-3 mb-4 max-h-[300px] overflow-y-auto hide-scrollbar"></div><div class="flex gap-2 bg-gray-50 p-3 r20"><input type="text" id="dev-task-cat" placeholder="분류(예: 기획)" class="w-1/4 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="text" id="dev-task-text" placeholder="업무 내용 입력" class="flex-1 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="date" id="dev-task-deadline" class="w-32 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><button onclick="addDevProjectTask(\''+d.id+'\')" class="bg-blue-600 text-white px-4 py-2 r20 text-xs font-bold hover:bg-blue-700 shadow-sm">추가</button></div></div><div class="bg-gray-50 p-5 r24 mb-6"><p class="text-xs font-black text-gray-400 mb-2">설명</p><p class="text-sm text-gray-700 whitespace-pre-wrap">'+esc(d.note||'설명 없음')+'</p></div><div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-detail-modal\');openDevModal(CACHE.devProjects.find(function(x){return x.id===\''+d.id+'\';}))" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">수정</button><button onclick="confirmDeleteDev2(\''+d.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold hover:bg-red-100 transition">삭제</button></div></div>');
+  // 해당 프로젝트의 댓글 불러오기
+  var cList=Object.keys(CACHE.comments||{}).map(function(k){return CACHE.comments[k];}).filter(function(c){return c.targetId===id;}).sort(function(a,b){return new Date(a.date)-new Date(b.date);});
+  
+  // 왼쪽: 기존 프로젝트 세부 정보 및 체크리스트
+  var leftHtml = '<div class="flex-1 p-8 md:p-10 overflow-y-auto"><h2 class="text-xl md:text-2xl font-black text-gray-900 mb-4 pr-10">'+priorityHtml(d.priority,'md')+' '+esc(d.title)+'</h2><div class="flex gap-2 flex-wrap mb-4">'+tagHtml(d.tags)+'<span class="text-xs px-3 py-1 r20 font-black '+(DEV_STATUS_META[d.status]||DEV_STATUS_META['보류']).badge+'">'+d.status+'</span></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-gray-50 p-5 r24 text-sm"><div><span class="text-gray-400 text-xs font-bold">기간</span><p class="font-bold text-gray-700">'+(d.start||'-')+' ~ '+(d.end||'-')+'</p></div><div><span class="text-gray-400 text-xs font-bold">진행률</span><div class="flex items-center gap-2 mt-1"><div class="flex-1 progress-bar"><div class="progress-fill" style="width:'+(d.progress||0)+'%"></div></div><span class="text-sm font-black text-blue-600">'+(d.progress||0)+'%</span></div></div><div class="md:col-span-2"><span class="text-gray-400 text-xs font-bold">담당자</span><div class="flex gap-1 mt-1">'+avatarHtml(d.assignees,8)+'</div></div></div><div class="mb-6 border-t border-gray-100 pt-5"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2 mb-3"><i class="ri-list-check-2 text-blue-500"></i> 카테고리별 세부 업무</h3><div id="dev-task-list" class="space-y-3 mb-4 max-h-[300px] overflow-y-auto hide-scrollbar"></div><div class="flex gap-2 bg-gray-50 p-3 r20"><input type="text" id="dev-task-cat" placeholder="분류(예: 기획)" class="w-1/4 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="text" id="dev-task-text" placeholder="업무 내용 입력" class="flex-1 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="date" id="dev-task-deadline" class="w-32 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><button onclick="addDevProjectTask(\''+d.id+'\')" class="bg-blue-600 text-white px-4 py-2 r20 text-xs font-bold hover:bg-blue-700 shadow-sm">추가</button></div></div><div class="bg-gray-50 p-5 r24 mb-6"><p class="text-xs font-black text-gray-400 mb-2">설명</p><p class="text-sm text-gray-700 whitespace-pre-wrap">'+esc(d.note||'설명 없음')+'</p></div><div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-detail-modal\');openDevModal(CACHE.devProjects.find(function(x){return x.id===\''+d.id+'\';}))" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">수정</button><button onclick="confirmDeleteDev2(\''+d.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold hover:bg-red-100 transition">삭제</button></div></div>';
+  
+  // 오른쪽: 댓글 및 멘션 패널
+  var rightHtml = '<div class="w-full md:w-[360px] bg-gray-50 border-l p-8 flex flex-col h-[600px] md:h-auto"><h3 class="font-black text-lg mb-4 text-gray-800"><i class="ri-chat-3-fill text-blue-500 mr-2"></i>업무 코멘트 / 멘션</h3><div id="dev-cmt-list" class="flex-1 overflow-y-auto space-y-3 hide-scrollbar mb-4">'+(cList.length?cList.map(function(c){
+    // 정규식으로 @이름 을 찾아 파란색 하이라이트 처리
+    var ctext = esc(c.content).replace(/@([^\s]+)/g, '<span class="text-blue-600 font-bold bg-blue-100 px-1 r20">@$1</span>');
+    return'<div class="bg-white p-4 r20 shadow-sm border border-gray-100"><div class="flex justify-between items-center mb-1"><span class="font-black text-xs text-gray-800">'+c.authorName+'</span><span class="text-[10px] text-gray-400">'+c.date+'</span></div><p class="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">'+ctext+'</p></div>';
+  }).join(''):'<p class="text-xs text-gray-400 text-center py-10">댓글이 없습니다.<br>@이름 으로 팀원을 호출해 보세요.</p>')+'</div><div class="relative"><textarea id="dev-cmt-in" rows="3" placeholder="@이름 으로 멘션, 내용 입력..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-blue-400 shadow-sm bg-white"></textarea><button onclick="submitDevComment(\''+d.id+'\')" class="absolute bottom-4 right-4 bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-blue-700 transition"><i class="ri-send-plane-fill text-sm"></i></button></div></div>';
+
+  // 합치기
+  renderModalRoot('dev-detail-modal','<div class="bg-white r35 modal-content max-w-6xl p-0 shadow-2xl relative fade-in flex flex-col md:flex-row overflow-hidden"><button onclick="closeModal(\'dev-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black z-10"><i class="ri-close-line text-3xl"></i></button>'+leftHtml+rightHtml+'</div>');
   openModal('dev-detail-modal');
-  renderDevProjectTasks(d.id); // 세부 업무 렌더링 호출
+  renderDevProjectTasks(d.id); 
+  var cl=document.getElementById('dev-cmt-list');if(cl)cl.scrollTop=cl.scrollHeight;
+}
+
+// (추가) 댓글 전송 함수
+function submitDevComment(id){
+  var inp=document.getElementById('dev-cmt-in');if(!inp||!inp.value.trim())return;
+  var msg=inp.value; inp.value=''; var cId=genId();
+  var c={targetId:id,email:USER.email,authorName:USER.name,content:msg,date:nowFmt()};
+  CACHE.comments[cId]=c; 
+  FB.set('comments/'+cId,c);
+  openDevDetail(id); // 화면 새로고침
 }
 // (추가) 개발 프로젝트 세부 업무 로직
 function renderDevProjectTasks(id){
@@ -857,3 +882,65 @@ function updateMemberPosition(id,position){
 }
 function submitNoticeAdmin(){var c=document.getElementById('admin-notice-content').value;if(!c)return showToast("내용 입력");var id=genId();FB.set('notices/'+id,{id:id,content:c,createdAt:Date.now(),createdBy:USER.email});showToast("공지 등록 완료!");}
 function downloadCSVAdmin(type){var month=document.getElementById('admin-export-month')?document.getElementById('admin-export-month').value:'all';var csv='\uFEFF';if(type==='Approval'){csv+="입금요청일,기안자,항목명,은행,계좌번호,금액,상태\n";CACHE.approval.filter(function(a){return matchMonth(a.dateCreated,month);}).forEach(function(a){csv+='"'+(a.date||'')+'","'+(a.drafterName||'')+'","'+(a.reason||'')+'","'+(a.bank||'')+'","'+(a.account||'')+'","'+(a.amount||0)+'","'+(a.status||'')+'"\n';});}else{csv+="신청자,시작일,종료일,구분,사유,상태\n";CACHE.leaves.filter(function(l){return matchMonth(l.startDate,month);}).forEach(function(l){csv+='"'+(l.applicantName||'')+'","'+(l.startDate||'')+'","'+(l.endDate||'')+'","'+(l.type||'')+'","'+(l.reason||'')+'","'+(l.status||'')+'"\n';});}var b=new Blob([csv],{type:'text/csv;charset=utf-8;'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=type+'_'+(month==='all'?'All':month)+'.csv';a.click();}
+
+/*═══════════ 글로벌 통합 검색 (Ctrl+K) ═══════════*/
+window.addEventListener('keydown', function(e){
+  // Mac의 Cmd+K 또는 Windows의 Ctrl+K를 누르면 실행
+  if((e.ctrlKey || e.metaKey) && e.key === 'k'){
+    e.preventDefault(); 
+    openGlobalSearchModal();
+  }
+});
+
+function openGlobalSearchModal(){
+  renderModalRoot('gs-modal', '<div class="bg-white r35 modal-content max-w-2xl p-8 shadow-2xl fade-in mt-10 mx-auto absolute top-10 left-0 right-0"><div class="flex items-center gap-3 border-b-2 border-gray-800 pb-4 mb-4"><i class="ri-search-line text-2xl text-gray-400"></i><input type="text" id="gs-input" oninput="doGlobalSearch(this.value)" placeholder="검색어를 입력하세요... (위키, CRM, 개발, 조직도)" class="flex-1 text-xl font-black outline-none bg-transparent"></div><div id="gs-results" class="max-h-[50vh] overflow-y-auto space-y-2 hide-scrollbar"><p class="text-gray-400 text-sm text-center py-10 font-bold">검색어를 입력하면 결과가 나타납니다.</p></div></div>');
+  openModal('gs-modal');
+  // 모달이 열리면 자동으로 입력창에 커서를 둡니다.
+  setTimeout(function(){ document.getElementById('gs-input').focus(); }, 100);
+}
+
+function doGlobalSearch(q){
+  q = q.toLowerCase().trim(); 
+  var el = document.getElementById('gs-results');
+  if(!q){ el.innerHTML='<p class="text-gray-400 text-sm text-center py-10 font-bold">검색어를 입력하면 결과가 나타납니다.</p>'; return; }
+  
+  var res = '';
+  // 1. 사내 위키 검색
+  CACHE.wiki.filter(function(w){return (w.title||'').toLowerCase().indexOf(q)>-1 || (w.content||'').toLowerCase().indexOf(q)>-1}).forEach(function(w){ res+='<div onclick="closeModal(\'gs-modal\'); showTab(\'wiki\'); setTimeout(function(){openWikiDetail(\''+w.id+'\');},200);" class="p-3 bg-gray-50 hover:bg-gray-100 r20 cursor-pointer transition"><p class="text-xs text-purple-600 font-bold mb-1"><i class="ri-book-read-fill"></i> 위키 문서</p><p class="text-sm font-black text-gray-800">'+esc(w.title)+'</p></div>'; });
+  
+  // 2. CRM 검색
+  CACHE.crm.filter(function(c){return (c.company||'').toLowerCase().indexOf(q)>-1}).forEach(function(c){ res+='<div onclick="closeModal(\'gs-modal\'); showTab(\'crm\'); setTimeout(function(){openCRMDetail(\''+c.id+'\');},200);" class="p-3 bg-gray-50 hover:bg-gray-100 r20 cursor-pointer transition"><p class="text-xs text-emerald-600 font-bold mb-1"><i class="ri-briefcase-4-fill"></i> CRM 고객사</p><p class="text-sm font-black text-gray-800">'+esc(c.company)+'</p></div>'; });
+  
+  // 3. 개발 프로젝트 검색
+  CACHE.devProjects.filter(function(d){return (d.title||'').toLowerCase().indexOf(q)>-1}).forEach(function(d){ res+='<div onclick="closeModal(\'gs-modal\'); showTab(\'dev\'); setTimeout(function(){openDevDetail(\''+d.id+'\');},200);" class="p-3 bg-gray-50 hover:bg-gray-100 r20 cursor-pointer transition"><p class="text-xs text-blue-600 font-bold mb-1"><i class="ri-macbook-fill"></i> 개발 프로젝트</p><p class="text-sm font-black text-gray-800">'+esc(d.title)+'</p></div>'; });
+  
+  // 4. 조직도 멤버 검색
+  CACHE.members.filter(function(m){return (m.name||'').toLowerCase().indexOf(q)>-1 || (m.dept||'').toLowerCase().indexOf(q)>-1}).forEach(function(m){ res+='<div onclick="closeModal(\'gs-modal\'); showTab(\'directory\');" class="p-3 bg-gray-50 hover:bg-gray-100 r20 cursor-pointer transition flex justify-between items-center"><div class="flex-1"><p class="text-xs text-teal-600 font-bold mb-1"><i class="ri-group-fill"></i> 조직도 멤버</p><p class="text-sm font-black text-gray-800">'+esc(m.name)+' <span class="text-xs text-gray-400 font-normal ml-2">'+esc(m.dept)+'</span></p></div><i class="ri-arrow-right-s-line text-gray-400"></i></div>'; });
+  
+  el.innerHTML = res || '<p class="text-gray-400 text-sm text-center py-10 font-bold">검색 결과가 없습니다.</p>';
+}
+
+/*═══════════ 다크 모드 토글 기능 ═══════════*/
+function toggleDarkMode(){
+  var html = document.documentElement;
+  html.classList.toggle('dark-theme');
+  
+  // 다크모드용 CSS 스타일이 없으면 삽입
+  if(!document.getElementById('dark-theme-style')){
+    var style = document.createElement('style');
+    style.id = 'dark-theme-style';
+    // 배경은 어둡게 반전시키되, 이미지/캔버스(차트)는 원래 색으로 재반전
+    style.innerHTML = `
+      html.dark-theme { filter: invert(0.92) hue-rotate(180deg); background: #111; } 
+      html.dark-theme img, html.dark-theme canvas, html.dark-theme [class*="avatar"] { filter: invert(1) hue-rotate(180deg); }
+      html.dark-theme .modal-overlay { background: rgba(255,255,255,0.5); }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  if(html.classList.contains('dark-theme')){
+    showToast("🌙 다크 모드가 켜졌습니다.");
+  } else {
+    showToast("☀️ 라이트 모드로 돌아왔습니다.");
+  }
+}
