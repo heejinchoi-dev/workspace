@@ -111,24 +111,27 @@ function signOut(){openCustomConfirm('로그아웃','로그아웃 하시겠습�
 // ═══════════════════════════════════════════════
 //  앱 초기화
 // ═══════════════════════════════════════════════
+/* === 로드 & 대시보드 코드 덮어쓰기 === */
 function initApp(){
   showSkeleton();
-  var nodes=['tasks','devProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices'];
+  var nodes=['tasks','devProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices','quickLinks']; // quickLinks 추가됨
   var results={},idx=0;
   function next(){if(idx>=nodes.length){processData(results);return;}var node=nodes[idx++];FB.get(node,function(err,data){results[node]=data;next();});}
   next();
 }
-function showSkeleton(){document.getElementById('tab-home').innerHTML='<div class="mb-8"><div class="skeleton h-10 w-64 r24 mb-2"></div></div><div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">'+Array(4).fill('<div class="skeleton h-32 r35"></div>').join('')+'</div><div class="grid grid-cols-1 md:grid-cols-2 gap-8">'+Array(2).fill('<div class="skeleton h-64 r35"></div>').join('')+'</div>';}
 
 function processData(results){
   var now=Date.now();
   CACHE.tasks=parseNode(results.tasks).filter(function(t){return!(t.status==='Done'&&(now-(parseInt(t.timestamp)||now))>30*86400000);});
   CACHE.devProjects=parseNode(results.devProjects);CACHE.sprints=parseNode(results.sprints);CACHE.crm=parseNode(results.crm);CACHE.cs=parseNode(results.cs);CACHE.schedules=parseNode(results.schedules);CACHE.approval=parseNode(results.approvals);CACHE.leaves=parseNode(results.leaves);CACHE.comments=results.comments||{};CACHE.wiki=parseNode(results.wiki);
+  CACHE.quickLinks = parseNode(results.quickLinks); // 퀵링크 캐시 등록!
+  
   CACHE.vault=parseNode(results.vault).filter(function(v){if(USER.role==='ADMIN'||v.creator===USER.email||v.visibility==='ALL')return true;if(v.visibility==='PRIVATE')return false;return(v.visibility||'').indexOf(USER.dept)>-1||(v.visibility||'').indexOf(USER.email)>-1;}).map(function(v){return Object.assign({},v,{password:'••••••••'});});
   var used=0;CACHE.leaves.filter(function(l){return l.applicant&&l.applicant.toLowerCase()===USER.email&&l.status==='승인';}).forEach(function(l){if(l.type==='연차')used+=1;else if(l.type==='반차')used+=0.5;});
   CACHE.leaveInfo={total:USER.leaveTotal,used:used,remain:USER.leaveTotal-used};
   var notices=parseNode(results.notices);if(notices.length>0){var latest=notices[notices.length-1];if(latest&&latest.content){activeNoticeId=latest.id;showNoticePopup(latest.content);}}
-  updateBadges();initConfirmModal();showTab('home');showToast('✅ 로드 완료!');setupRealtimeListeners();
+  updateBadges();initConfirmModal();showTab('home');showToast('✅ 로드 완료!');
+  if(typeof setupRealtimeListeners === 'function') setupRealtimeListeners(); // 실시간 알림 켜기
 }
 
 // ═══════════════════════════════════════════════
@@ -191,6 +194,13 @@ function renderDashboard(){
   var urgentTasks=CACHE.tasks.filter(function(t){if(!t.deadline||t.status==='Done')return false;return Math.ceil((new Date(t.deadline)-today)/86400000)<=3;}).sort(function(a,b){return new Date(a.deadline)-new Date(b.deadline);});
   var ongoing=CACHE.devProjects.filter(function(p){return p.status!=='배포완료'&&p.status!=='보류';});
   var d=new Date(),dateStr=d.getFullYear()+'년 '+(d.getMonth()+1)+'월 '+d.getDate()+'일 '+'일월화수목금토'[d.getDay()]+'요일';
+  
+  // 사내 퀵링크 영역 생성
+// 사내 퀵링크 영역 생성 (수정완료)
+  var qlHtml = (CACHE.quickLinks||[]).map(function(q){
+    return '<a href="'+q.url+'" target="_blank" class="flex flex-col items-center justify-center p-4 bg-white border border-gray-100 hover:border-blue-300 r24 shadow-sm hover:shadow-md transition group"><i class="'+esc(q.icon||'ri-link')+' text-2xl text-blue-500 mb-2 group-hover:scale-110 transition"></i><span class="text-xs font-bold text-gray-700">'+esc(q.name)+'</span></a>';
+  }).join('');
+
   document.getElementById('tab-home').innerHTML=
     '<div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-2"><h1 class="text-2xl md:text-4xl font-black text-gray-800 tracking-tight">좋은 하루입니다, '+esc(USER.name)+'님! 👋</h1><p class="text-sm text-gray-400 font-bold">'+dateStr+'</p></div>'+
     '<div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">'+
@@ -388,58 +398,47 @@ function openScheduleModal(data){
 function submitSchedule(){var id=document.getElementById('sch-edit-id').value;var title=document.getElementById('sch-title').value.trim();if(!title)return showToast("제목을 입력하세요.");var obj={title:title,start:document.getElementById('sch-start').value,end:document.getElementById('sch-end').value||document.getElementById('sch-start').value,type:document.getElementById('sch-type').value,note:document.getElementById('sch-note').value,creator:USER.email};if(id){obj.id=id;var idx=CACHE.schedules.findIndex(function(x){return x.id===id;});if(idx>-1)Object.assign(CACHE.schedules[idx],obj);FB.patch('schedules/'+id,obj);}else{obj.id=genId();CACHE.schedules.push(obj);FB.set('schedules/'+obj.id,obj);}closeModal('schedule-modal');showToast(id?"일정 수정 완료":"일정 등록 완료");}
 function deleteScheduleAction(id){openCustomConfirm("일정 삭제","이 일정을 삭제할까요?",function(){CACHE.schedules=CACHE.schedules.filter(function(x){return x.id!==id;});FB.remove('schedules/'+id);closeModal('schedule-modal');showToast("삭제 완료");});}
 
-function initDevTab(){var el=document.getElementById('tab-dev');if(el.querySelector('#dev-board-view'))return;el.innerHTML='<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3"><div><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-macbook-fill text-blue-500 mr-2"></i> 개발 프로젝트</h1><p class="text-sm text-gray-400 mt-1 ml-8" id="dev-project-count"></p></div><div class="flex items-center gap-3 flex-wrap"><div class="flex bg-white border border-gray-200 p-1 r24 text-xs font-bold"><button id="dev-view-list" onclick="setDevView(\'list\')" class="px-4 py-2 r20 text-gray-400">리스트</button><button id="dev-view-board" onclick="setDevView(\'board\')" class="px-4 py-2 r20 bg-gray-100 text-gray-800">보드</button></div><select id="dev-status-filter" onchange="renderDevProjects()" class="border border-gray-200 bg-white p-2.5 r24 text-xs font-bold outline-none text-gray-600"><option value="all">전체 상태</option><option>기획중</option><option>개발중</option><option>QA/테스트</option><option>배포완료</option><option>보류</option></select><input type="text" id="dev-search" oninput="renderDevProjects()" placeholder="검색..." class="pl-4 pr-4 py-2.5 border border-gray-200 r24 text-xs outline-none w-36 bg-white"><button onclick="openDevModal()" class="bg-blue-600 text-white px-5 py-2.5 r24 text-sm font-bold shadow-md hover:bg-blue-700 transition">+ 새 프로젝트</button></div></div><div id="dev-list-view" class="flex-1 overflow-y-auto hide-scrollbar hidden"><div id="dev-list-body" class="space-y-1.5"></div></div><div id="dev-board-view" class="flex-1 overflow-x-auto hide-scrollbar" style="min-height:0"><div class="flex gap-4 h-full pb-4 min-w-max">'+['기획중','개발중','QA/테스트','배포완료','보류'].map(function(s){var m=DEV_STATUS_META[s];return'<div class="w-72 flex flex-col"><div class="flex items-center gap-2 mb-3 px-2"><span class="w-2.5 h-2.5 rounded-full '+m.dot+'"></span><span class="text-xs font-black text-gray-600 uppercase tracking-wider">'+s+'</span><span class="text-xs text-gray-400 font-bold ml-auto" id="dev-cnt-'+s+'"></span></div><div class="space-y-3 flex-1 overflow-y-auto hide-scrollbar" id="dev-board-'+s+'"></div></div>';}).join('')+'</div></div>';}
+function initDevTab(){
+  var el=document.getElementById('tab-dev');if(el.querySelector('#dev-board-view'))return;
+  el.innerHTML='<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3"><div><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-macbook-fill text-blue-500 mr-2"></i> 개발 프로젝트</h1><p class="text-sm text-gray-400 mt-1 ml-8" id="dev-project-count"></p></div><div class="flex items-center gap-3 flex-wrap"><label class="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-600 bg-white px-3 py-2 r24 border border-gray-200 shadow-sm hover:bg-blue-50 transition"><input type="checkbox" id="dev-my-filter" onchange="renderDevProjects()" class="w-4 h-4 accent-blue-600"> 내 업무만</label><div class="flex bg-white border border-gray-200 p-1 r24 text-xs font-bold"><button id="dev-view-list" onclick="setDevView(\'list\')" class="px-4 py-2 r20 text-gray-400">리스트</button><button id="dev-view-board" onclick="setDevView(\'board\')" class="px-4 py-2 r20 bg-gray-100 text-gray-800">보드</button></div><select id="dev-status-filter" onchange="renderDevProjects()" class="border border-gray-200 bg-white p-2.5 r24 text-xs font-bold outline-none text-gray-600"><option value="all">전체 상태</option><option>기획중</option><option>개발중</option><option>QA/테스트</option><option>배포완료</option><option>보류</option></select><input type="text" id="dev-search" oninput="renderDevProjects()" placeholder="검색..." class="pl-4 pr-4 py-2.5 border border-gray-200 r24 text-xs outline-none w-36 bg-white"><button onclick="openDevModal()" class="bg-blue-600 text-white px-5 py-2.5 r24 text-sm font-bold shadow-md hover:bg-blue-700 transition">+ 새 프로젝트</button></div></div><div id="dev-list-view" class="flex-1 overflow-y-auto hide-scrollbar hidden"><div id="dev-list-body" class="space-y-1.5"></div></div><div id="dev-board-view" class="flex-1 overflow-x-auto hide-scrollbar" style="min-height:0"><div class="flex gap-4 h-full pb-4 min-w-max">'+['기획중','개발중','QA/테스트','배포완료','보류'].map(function(s){var m=DEV_STATUS_META[s];return'<div class="w-72 flex flex-col"><div class="flex items-center gap-2 mb-3 px-2"><span class="w-2.5 h-2.5 rounded-full '+m.dot+'"></span><span class="text-xs font-black text-gray-600 uppercase tracking-wider">'+s+'</span><span class="text-xs text-gray-400 font-bold ml-auto" id="dev-cnt-'+s+'"></span></div><div class="space-y-3 flex-1 overflow-y-auto hide-scrollbar" id="dev-board-'+s+'"></div></div>';}).join('')+'</div></div>';
+}
 function setDevView(v){devView=v;var lv=document.getElementById('dev-list-view'),bv=document.getElementById('dev-board-view');if(lv)lv.classList.toggle('hidden',v!=='list');if(bv)bv.classList.toggle('hidden',v!=='board');['list','board'].forEach(function(x){var b=document.getElementById('dev-view-'+x);if(b)b.className='px-4 py-2 r20 transition text-xs font-bold '+(x===v?'bg-gray-100 text-gray-800':'text-gray-400');});renderDevProjects();}
-function renderDevProjects(){initDevTab();var sf=(document.getElementById('dev-status-filter')||{value:'all'}).value;var kw=(document.getElementById('dev-search')||{value:''}).value.toLowerCase();var data=CACHE.devProjects.filter(function(p){return(sf==='all'||p.status===sf)&&(!kw||(p.title||'').toLowerCase().indexOf(kw)>-1||(p.tags||'').toLowerCase().indexOf(kw)>-1);});var cnt=document.getElementById('dev-project-count');if(cnt)cnt.innerText='총 '+data.length+'개';if(devView==='list')renderDevListView(data);else renderDevBoardView(data);}
+function renderDevProjects(){
+  initDevTab();
+  var sf=(document.getElementById('dev-status-filter')||{value:'all'}).value;
+  var kw=(document.getElementById('dev-search')||{value:''}).value.toLowerCase();
+  var myOnly = document.getElementById('dev-my-filter') && document.getElementById('dev-my-filter').checked;
+  var data=CACHE.devProjects.filter(function(p){
+    var isMy = !myOnly || (p.assignees||'').toLowerCase().indexOf(USER.email.toLowerCase())>-1;
+    return isMy && (sf==='all'||p.status===sf)&&(!kw||(p.title||'').toLowerCase().indexOf(kw)>-1||(p.tags||'').toLowerCase().indexOf(kw)>-1);
+  });
+  var cnt=document.getElementById('dev-project-count');if(cnt)cnt.innerText='총 '+data.length+'개';
+  if(devView==='list')renderDevListView(data);else renderDevBoardView(data);
+}
 function renderDevListView(data){var el=document.getElementById('dev-list-body');if(!el)return;if(!data.length){el.innerHTML='<div class="text-center py-16 text-gray-400 font-bold text-sm">프로젝트가 없습니다.</div>';return;}el.innerHTML=data.map(function(p){var m=DEV_STATUS_META[p.status]||DEV_STATUS_META['보류'];return'<div onclick="openDevDetail(\''+p.id+'\')" class="group flex flex-col md:flex-row md:items-center gap-3 px-5 py-4 bg-white r24 border border-gray-100 hover:border-blue-300 hover:shadow-md cursor-pointer transition mb-1.5"><div class="flex items-center gap-3 flex-1 min-w-0"><span class="w-2 h-2 rounded-full '+m.dot+' shrink-0"></span><p class="font-black text-gray-800 text-sm truncate group-hover:text-blue-600">'+esc(p.title)+'</p></div><div class="flex items-center gap-3 flex-wrap">'+priorityHtml(p.priority)+'<span class="text-xs px-3 py-1 r20 font-black '+m.badge+'">'+p.status+'</span><div class="flex items-center gap-2"><div class="w-20 progress-bar"><div class="progress-fill" style="width:'+(p.progress||0)+'%"></div></div><span class="text-xs font-black text-blue-600">'+(p.progress||0)+'%</span></div><div class="flex">'+avatarHtml(p.assignees)+'</div></div></div>';}).join('');}
 // ▼ 기존 renderDevBoardView 함수 전체를 지우고 이걸로 덮어쓰세요 ▼
 function renderDevBoardView(data){
   ['기획중','개발중','QA/테스트','배포완료','보류'].forEach(function(s){
-    var colEl=document.getElementById('dev-board-'+s);
-    var cntEl=document.getElementById('dev-cnt-'+s);
-    if(!colEl)return;
-    var items=data.filter(function(p){return p.status===s;});
-    if(cntEl)cntEl.innerText=items.length+'건';
+    var colEl=document.getElementById('dev-board-'+s); var cntEl=document.getElementById('dev-cnt-'+s); if(!colEl)return;
+    var items=data.filter(function(p){return p.status===s;}); if(cntEl)cntEl.innerText=items.length+'건';
     if(!items.length){colEl.innerHTML='<div class="text-xs text-gray-300 font-bold text-center py-8 border-2 border-dashed border-gray-100 r24">없음</div>';}
     else {
-      colEl.innerHTML=items.map(function(p){var pm=PRIORITY_META[p.priority];return'<div data-id="'+p.id+'" onclick="openDevDetail(\''+p.id+'\')" class="bg-white border border-gray-100 hover:border-blue-300 p-5 r24 cursor-pointer shadow-sm hover:shadow-md transition group"><div class="flex items-start justify-between mb-2 gap-2"><p class="font-black text-gray-800 text-sm leading-snug group-hover:text-blue-600 flex-1">'+esc(p.title)+'</p>'+(pm?'<span class="text-[10px] px-2 py-0.5 r20 font-black shrink-0 '+pm.bg+' '+pm.text+'"><i class="'+pm.icon+'"></i>'+p.priority+'</span>':'')+'</div><div class="flex gap-1 flex-wrap mb-3">'+tagHtml(p.tags)+'</div><div class="progress-bar mb-3"><div class="progress-fill" style="width:'+(p.progress||0)+'%"></div></div><div class="flex justify-between items-center"><div class="flex">'+avatarHtml(p.assignees,3)+'</div><span class="text-[10px] text-gray-400 font-bold">'+(p.end||'')+'</span></div></div>';}).join('');
+      colEl.innerHTML=items.map(function(p){var pm=PRIORITY_META[p.priority]; var tBadge = p.ticketId ? '<span class="text-blue-500 mr-1 text-[10px]">['+p.ticketId+']</span>' : ''; return'<div data-id="'+p.id+'" onclick="openDevDetail(\''+p.id+'\')" class="bg-white border border-gray-100 hover:border-blue-300 p-5 r24 cursor-pointer shadow-sm hover:shadow-md transition group"><div class="flex items-start justify-between mb-2 gap-2"><p class="font-black text-gray-800 text-sm leading-snug group-hover:text-blue-600 flex-1">'+tBadge+esc(p.title)+'</p>'+(pm?'<span class="text-[10px] px-2 py-0.5 r20 font-black shrink-0 '+pm.bg+' '+pm.text+'"><i class="'+pm.icon+'"></i>'+p.priority+'</span>':'')+'</div><div class="flex gap-1 flex-wrap mb-3">'+tagHtml(p.tags)+'</div><div class="progress-bar mb-3"><div class="progress-fill" style="width:'+(p.progress||0)+'%"></div></div><div class="flex justify-between items-center"><div class="flex">'+avatarHtml(p.assignees,3)+'</div></div></div>';}).join('');
     }
-    new Sortable(colEl, {
-      group: 'dev-projects',
-      animation: 150,
-      onEnd: function(evt) {
-        var newStatus = evt.to.id.replace('dev-board-', '');
-        var projectId = evt.item.getAttribute('data-id');
-        if(!projectId) return;
-        var d = CACHE.devProjects.find(function(x){return x.id===projectId;});
-        if(d) d.status = newStatus;
-        FB.patch('devProjects/'+projectId, {status: newStatus});
-        showToast("상태가 [" + newStatus + "]로 변경되었습니다.");
-      }
-    });
+    new Sortable(colEl, { group: 'dev-projects', animation: 150, onEnd: function(evt) { var newStatus = evt.to.id.replace('dev-board-', ''); var projectId = evt.item.getAttribute('data-id'); if(!projectId) return; var d = CACHE.devProjects.find(function(x){return x.id===projectId;}); if(d) d.status = newStatus; FB.patch('devProjects/'+projectId, {status: newStatus}); showToast("상태가 [" + newStatus + "]로 변경되었습니다."); }});
   });
 }
 
 function openDevDetail(id){
   var d=CACHE.devProjects.find(function(x){return String(x.id)===String(id);});if(!d)return;
-  // 해당 프로젝트의 댓글 불러오기
   var cList=Object.keys(CACHE.comments||{}).map(function(k){return CACHE.comments[k];}).filter(function(c){return c.targetId===id;}).sort(function(a,b){return new Date(a.date)-new Date(b.date);});
+  var tBadge = d.ticketId ? '<span class="text-blue-600 mr-2 text-sm bg-blue-100 px-2 py-1 r20 font-black">['+d.ticketId+']</span>' : '';
   
-  // 왼쪽: 기존 프로젝트 세부 정보 및 체크리스트
-  var leftHtml = '<div class="flex-1 p-8 md:p-10 overflow-y-auto"><h2 class="text-xl md:text-2xl font-black text-gray-900 mb-4 pr-10">'+priorityHtml(d.priority,'md')+' '+esc(d.title)+'</h2><div class="flex gap-2 flex-wrap mb-4">'+tagHtml(d.tags)+'<span class="text-xs px-3 py-1 r20 font-black '+(DEV_STATUS_META[d.status]||DEV_STATUS_META['보류']).badge+'">'+d.status+'</span></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-gray-50 p-5 r24 text-sm"><div><span class="text-gray-400 text-xs font-bold">기간</span><p class="font-bold text-gray-700">'+(d.start||'-')+' ~ '+(d.end||'-')+'</p></div><div><span class="text-gray-400 text-xs font-bold">진행률</span><div class="flex items-center gap-2 mt-1"><div class="flex-1 progress-bar"><div class="progress-fill" style="width:'+(d.progress||0)+'%"></div></div><span class="text-sm font-black text-blue-600">'+(d.progress||0)+'%</span></div></div><div class="md:col-span-2"><span class="text-gray-400 text-xs font-bold">담당자</span><div class="flex gap-1 mt-1">'+avatarHtml(d.assignees,8)+'</div></div></div><div class="mb-6 border-t border-gray-100 pt-5"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2 mb-3"><i class="ri-list-check-2 text-blue-500"></i> 카테고리별 세부 업무</h3><div id="dev-task-list" class="space-y-3 mb-4 max-h-[300px] overflow-y-auto hide-scrollbar"></div><div class="flex gap-2 bg-gray-50 p-3 r20"><input type="text" id="dev-task-cat" placeholder="분류(예: 기획)" class="w-1/4 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="text" id="dev-task-text" placeholder="업무 내용 입력" class="flex-1 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="date" id="dev-task-deadline" class="w-32 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><button onclick="addDevProjectTask(\''+d.id+'\')" class="bg-blue-600 text-white px-4 py-2 r20 text-xs font-bold hover:bg-blue-700 shadow-sm">추가</button></div></div><div class="bg-gray-50 p-5 r24 mb-6"><p class="text-xs font-black text-gray-400 mb-2">설명</p><p class="text-sm text-gray-700 whitespace-pre-wrap">'+esc(d.note||'설명 없음')+'</p></div><div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-detail-modal\');openDevModal(CACHE.devProjects.find(function(x){return x.id===\''+d.id+'\';}))" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">수정</button><button onclick="confirmDeleteDev2(\''+d.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold hover:bg-red-100 transition">삭제</button></div></div>';
-  
-  // 오른쪽: 댓글 및 멘션 패널
-  var rightHtml = '<div class="w-full md:w-[360px] bg-gray-50 border-l p-8 flex flex-col h-[600px] md:h-auto"><h3 class="font-black text-lg mb-4 text-gray-800"><i class="ri-chat-3-fill text-blue-500 mr-2"></i>업무 코멘트 / 멘션</h3><div id="dev-cmt-list" class="flex-1 overflow-y-auto space-y-3 hide-scrollbar mb-4">'+(cList.length?cList.map(function(c){
-    // 정규식으로 @이름 을 찾아 파란색 하이라이트 처리
-    var ctext = esc(c.content).replace(/@([^\s]+)/g, '<span class="text-blue-600 font-bold bg-blue-100 px-1 r20">@$1</span>');
-    return'<div class="bg-white p-4 r20 shadow-sm border border-gray-100"><div class="flex justify-between items-center mb-1"><span class="font-black text-xs text-gray-800">'+c.authorName+'</span><span class="text-[10px] text-gray-400">'+c.date+'</span></div><p class="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">'+ctext+'</p></div>';
-  }).join(''):'<p class="text-xs text-gray-400 text-center py-10">댓글이 없습니다.<br>@이름 으로 팀원을 호출해 보세요.</p>')+'</div><div class="relative"><textarea id="dev-cmt-in" rows="3" placeholder="@이름 으로 멘션, 내용 입력..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-blue-400 shadow-sm bg-white"></textarea><button onclick="submitDevComment(\''+d.id+'\')" class="absolute bottom-4 right-4 bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-blue-700 transition"><i class="ri-send-plane-fill text-sm"></i></button></div></div>';
+  var leftHtml = '<div class="flex-1 p-8 md:p-10 overflow-y-auto"><h2 class="text-xl md:text-2xl font-black text-gray-900 mb-4 pr-10">'+tBadge+priorityHtml(d.priority,'md')+' '+esc(d.title)+'</h2><div class="flex gap-2 flex-wrap mb-4">'+tagHtml(d.tags)+'<span class="text-xs px-3 py-1 r20 font-black '+(DEV_STATUS_META[d.status]||DEV_STATUS_META['보류']).badge+'">'+d.status+'</span></div><div class="grid grid-cols-1 gap-4 mb-6 bg-gray-50 p-5 r24 text-sm"><div><span class="text-gray-400 text-xs font-bold">진행률</span><div class="flex items-center gap-2 mt-1"><div class="flex-1 progress-bar"><div class="progress-fill" style="width:'+(d.progress||0)+'%"></div></div><span class="text-sm font-black text-blue-600">'+(d.progress||0)+'%</span></div></div><div><span class="text-gray-400 text-xs font-bold">담당자</span><div class="flex gap-1 mt-1">'+avatarHtml(d.assignees,8)+'</div></div></div><div class="mb-6 border-t border-gray-100 pt-5"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2 mb-3"><i class="ri-list-check-2 text-blue-500"></i> 카테고리별 세부 업무</h3><div id="dev-task-list" class="space-y-3 mb-4 max-h-[300px] overflow-y-auto hide-scrollbar"></div><div class="flex gap-2 bg-gray-50 p-3 r20"><input type="text" id="dev-task-cat" placeholder="분류(예: 기획)" class="w-1/4 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="text" id="dev-task-text" placeholder="업무 내용 입력" class="flex-1 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="date" id="dev-task-deadline" class="w-32 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><button onclick="addDevProjectTask(\''+d.id+'\')" class="bg-blue-600 text-white px-4 py-2 r20 text-xs font-bold hover:bg-blue-700 shadow-sm">추가</button></div></div><div class="bg-gray-50 p-5 r24 mb-6"><p class="text-xs font-black text-gray-400 mb-2">설명</p><p class="text-sm text-gray-700 whitespace-pre-wrap">'+esc(d.note||'설명 없음')+'</p></div><div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-detail-modal\');openDevModal(CACHE.devProjects.find(function(x){return x.id===\''+d.id+'\';}))" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">수정</button><button onclick="confirmDeleteDev2(\''+d.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold hover:bg-red-100 transition">삭제</button></div></div>';
+  var rightHtml = '<div class="w-full md:w-[360px] bg-gray-50 border-l p-8 flex flex-col h-[600px] md:h-auto"><h3 class="font-black text-lg mb-4 text-gray-800"><i class="ri-chat-3-fill text-blue-500 mr-2"></i>업무 코멘트 / 멘션</h3><div id="dev-cmt-list" class="flex-1 overflow-y-auto space-y-3 hide-scrollbar mb-4">'+(cList.length?cList.map(function(c){var ctext = esc(c.content).replace(/@([^\s]+)/g, '<span class="text-blue-600 font-bold bg-blue-100 px-1 r20">@$1</span>');return'<div class="bg-white p-4 r20 shadow-sm border border-gray-100"><div class="flex justify-between items-center mb-1"><span class="font-black text-xs text-gray-800">'+c.authorName+'</span><span class="text-[10px] text-gray-400">'+c.date+'</span></div><p class="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">'+ctext+'</p></div>';}).join(''):'<p class="text-xs text-gray-400 text-center py-10">댓글이 없습니다.<br>@이름 으로 팀원을 호출해 보세요.</p>')+'</div><div class="relative"><textarea id="dev-cmt-in" rows="3" placeholder="@이름 으로 멘션, 내용 입력..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-blue-400 shadow-sm bg-white"></textarea><button onclick="submitDevComment(\''+d.id+'\')" class="absolute bottom-4 right-4 bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-blue-700 transition"><i class="ri-send-plane-fill text-sm"></i></button></div></div>';
 
-  // 합치기
   renderModalRoot('dev-detail-modal','<div class="bg-white r35 modal-content max-w-6xl p-0 shadow-2xl relative fade-in flex flex-col md:flex-row overflow-hidden"><button onclick="closeModal(\'dev-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black z-10"><i class="ri-close-line text-3xl"></i></button>'+leftHtml+rightHtml+'</div>');
-  openModal('dev-detail-modal');
-  renderDevProjectTasks(d.id); 
-  var cl=document.getElementById('dev-cmt-list');if(cl)cl.scrollTop=cl.scrollHeight;
+  openModal('dev-detail-modal'); renderDevProjectTasks(d.id); var cl=document.getElementById('dev-cmt-list');if(cl)cl.scrollTop=cl.scrollHeight;
 }
 
 // (추가) 댓글 전송 함수
@@ -506,10 +505,36 @@ function deleteDevProjectTask(id, idx){
 function confirmDeleteDev2(id){openCustomConfirm("프로젝트 삭제","정말 삭제하시겠습니까?",function(){CACHE.devProjects=CACHE.devProjects.filter(function(x){return x.id!==id;});closeModal('dev-detail-modal');renderDevProjects();FB.remove('devProjects/'+id);showToast("삭제 완료");});}
 
 function openDevModal(data){
-  renderModalRoot('dev-modal','<div class="bg-white r35 modal-content max-w-lg p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black text-blue-600 mb-6"><i class="ri-macbook-fill"></i> '+(data?'프로젝트 수정':'프로젝트 생성')+'</h2><input id="dev-title" type="text" value="'+(data?esc(data.title):'')+'" placeholder="프로젝트명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-blue-500"><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">우선순위</label><select id="dev-priority-select" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50"><option value="P1" '+(data&&data.priority==='P1'?'selected':'')+'>P1 긴급</option><option value="P2" '+(data&&data.priority==='P2'?'selected':'')+'>P2 높음</option><option value="P3" '+((!data||data.priority==='P3')?'selected':'')+'>P3 보통</option><option value="P4" '+(data&&data.priority==='P4'?'selected':'')+'>P4 낮음</option></select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">상태</label><select id="dev-status" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50">'+Object.keys(DEV_STATUS_META).map(function(s){return'<option value="'+s+'" '+(data&&data.status===s?'selected':'')+'>'+s+'</option>';}).join('')+'</select></div></div><div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">태그 (쉼표 구분)</label><input id="dev-tags-input" type="text" value="'+(data?esc(data.tags||''):'')+'" placeholder="iOS, API" class="w-full border p-4 r24 outline-none text-sm bg-gray-50"></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">시작일</label><input id="dev-start" type="date" value="'+(data?data.start||'':'')+'" class="w-full border p-4 r24 outline-none text-sm"></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">마감일</label><input id="dev-end" type="date" value="'+(data?data.end||'':'')+'" class="w-full border p-4 r24 outline-none text-sm"></div></div><div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">진행률 (%)</label><input id="dev-progress" type="number" min="0" max="100" value="'+(data?data.progress||0:0)+'" class="w-full border p-4 r24 outline-none text-base font-black text-blue-600 text-center"></div><div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">참여 인원</label><div id="dev-assignees-container" class="w-full border p-4 r24 bg-white max-h-32 overflow-y-auto space-y-2 hide-scrollbar shadow-inner"></div></div><textarea id="dev-note" rows="3" placeholder="프로젝트 설명" class="w-full border p-4 r24 mb-6 outline-none text-sm">'+(data?esc(data.note||''):'')+'</textarea><input type="hidden" id="dev-edit-id" value="'+(data?data.id:'')+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button onclick="submitDevProject()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">'+(data?'수정':'생성')+'</button></div></div>');
-  openModal('dev-modal');populateAssignees('dev-assignees-container',data?data.assignees:'');
+  // 생성 시에는 진행률 숨김, 수정 시에만 보이게 처리
+  var progressHtml = data ? '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">진행률 (%)</label><input id="dev-progress" type="number" min="0" max="100" value="'+(data.progress||0)+'" class="w-full border p-4 r24 outline-none text-base font-black text-blue-600 text-center bg-gray-50"></div>' : '';
+
+  renderModalRoot('dev-modal','<div class="bg-white r35 modal-content max-w-lg p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black text-blue-600 mb-6"><i class="ri-macbook-fill"></i> '+(data?'프로젝트 수정':'프로젝트 생성')+'</h2><input id="dev-title" type="text" value="'+(data?esc(data.title):'')+'" placeholder="프로젝트명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-blue-500"><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">우선순위</label><select id="dev-priority-select" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50"><option value="P1" '+(data&&data.priority==='P1'?'selected':'')+'>P1 긴급</option><option value="P2" '+(data&&data.priority==='P2'?'selected':'')+'>P2 높음</option><option value="P3" '+((!data||data.priority==='P3')?'selected':'')+'>P3 보통</option><option value="P4" '+(data&&data.priority==='P4'?'selected':'')+'>P4 낮음</option></select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">상태</label><select id="dev-status" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50">'+Object.keys(DEV_STATUS_META).map(function(s){return'<option value="'+s+'" '+(data&&data.status===s?'selected':'')+'>'+s+'</option>';}).join('')+'</select></div></div><div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">태그 (쉼표 구분)</label><input id="dev-tags-input" type="text" value="'+(data?esc(data.tags||''):'')+'" placeholder="iOS, API" class="w-full border p-4 r24 outline-none text-sm bg-gray-50"></div>' + progressHtml + '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">참여 인원</label><div id="dev-assignees-container" class="w-full border p-4 r24 bg-white max-h-32 overflow-y-auto space-y-2 hide-scrollbar shadow-inner"></div></div><textarea id="dev-note" rows="3" placeholder="프로젝트 설명" class="w-full border p-4 r24 mb-6 outline-none text-sm">'+(data?esc(data.note||''):'')+'</textarea><input type="hidden" id="dev-edit-id" value="'+(data?data.id:'')+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button onclick="submitDevProject()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">'+(data?'수정':'생성')+'</button></div></div>');
+  openModal('dev-modal');
+  populateAssignees('dev-assignees-container',data?data.assignees:'');
 }
-function submitDevProject(){var id=document.getElementById('dev-edit-id').value;var title=document.getElementById('dev-title').value.trim();if(!title)return showToast("프로젝트명을 입력하세요.");var fields={title:title,status:document.getElementById('dev-status').value,progress:Number(document.getElementById('dev-progress').value)||0,start:document.getElementById('dev-start').value,end:document.getElementById('dev-end').value,assignees:getChecked('dev-assignees-container'),note:document.getElementById('dev-note').value,tags:document.getElementById('dev-tags-input').value,priority:document.getElementById('dev-priority-select').value};if(id){var idx=CACHE.devProjects.findIndex(function(x){return x.id===id;});if(idx>-1)Object.assign(CACHE.devProjects[idx],fields);closeModal('dev-modal');showToast("수정 완료!");renderDevProjects();FB.patch('devProjects/'+id,fields);}else{var newId=genId();var obj=Object.assign({id:newId},fields,{creator:USER.email,timestamp:Date.now()});CACHE.devProjects.push(obj);closeModal('dev-modal');showToast("생성 완료!");renderDevProjects();FB.set('devProjects/'+newId,obj);}}
+
+/* === DEV 수정 코드 === */
+function submitDevProject(){
+  var id=document.getElementById('dev-edit-id').value;
+  var title=document.getElementById('dev-title').value.trim();
+  if(!title) return showToast("프로젝트명을 입력하세요.");
+  var progressEl = document.getElementById('dev-progress');
+  var progressVal = progressEl ? (Number(progressEl.value)||0) : 0;
+
+  var fields={title:title,status:document.getElementById('dev-status').value,progress:progressVal,assignees:getChecked('dev-assignees-container'),note:document.getElementById('dev-note').value,tags:document.getElementById('dev-tags-input').value,priority:document.getElementById('dev-priority-select').value};
+  
+  if(id){
+    var idx=CACHE.devProjects.findIndex(function(x){return x.id===id;});
+    if(idx>-1) Object.assign(CACHE.devProjects[idx],fields);
+    closeModal('dev-modal');showToast("수정 완료!");renderDevProjects();FB.patch('devProjects/'+id,fields);
+  }else{
+    var newId=genId();
+    var tId=getNextTicketId(CACHE.devProjects, 'DEV'); // 티켓 번호 발급!
+    var obj=Object.assign({id:newId, ticketId:tId},fields,{creator:USER.email,timestamp:Date.now()});
+    CACHE.devProjects.push(obj); closeModal('dev-modal');showToast("생성 완료 ("+tId+")");renderDevProjects();FB.set('devProjects/'+newId,obj);
+  }
+}
+
 
 // ═══════════════════════════════════════════════
 //  CRM
@@ -563,15 +588,103 @@ function submitCRMComment(id){
 function confirmDeleteCRM(id){openCustomConfirm("고객사 삭제","정말 삭제하시겠습니까?",function(){CACHE.crm=CACHE.crm.filter(function(x){return x.id!==id;});closeModal('crm-detail-modal');filterCRM();FB.remove('crm/'+id);showToast("삭제 완료");});}
 // ▲ 여기까지 복사 ▲
 
-// ═══════════════════════════════════════════════
-//  CS
-// ═══════════════════════════════════════════════
-function initCSTab(){var el=document.getElementById('tab-cs');if(el.querySelector('#col-cs-대기'))return;el.innerHTML='<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3"><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-customer-service-2-fill text-orange-500 mr-2"></i> CS 고객지원</h1><div class="flex gap-3 flex-wrap"><input type="text" id="cs-search" oninput="filterCS()" placeholder="검색..." class="px-4 py-3 border r35 text-sm outline-none w-48 bg-white card-shadow"><button onclick="openCSModal()" class="bg-orange-500 text-white px-6 py-3 r35 text-sm font-bold shadow-lg">+ 티켓 생성</button></div></div><div class="flex gap-4 flex-1 pb-6 overflow-x-auto hide-scrollbar">'+[['대기','text-red-500','신규 접수'],['처리중','text-orange-500','처리 중'],['완료','text-gray-400','완료']].map(function(x){return'<div class="flex-1 min-w-[260px] bg-white p-5 r35 card-shadow flex flex-col"><h2 class="font-black '+x[1]+' text-sm uppercase mb-4 px-2 tracking-wider">'+x[2]+'</h2><div id="col-cs-'+x[0]+'" class="flex-1 space-y-4 overflow-y-auto hide-scrollbar"></div></div>';}).join('')+'</div>';}
-function filterCS(){initCSTab();var k=(document.getElementById('cs-search')||{value:''}).value.toLowerCase();renderCSUI(CACHE.cs.filter(function(c){return(c.customer||'').toLowerCase().indexOf(k)>-1||(c.issue||'').toLowerCase().indexOf(k)>-1;}));}
-function renderCSUI(data){['대기','처리중','완료'].forEach(function(s){var el=document.getElementById('col-cs-'+s);if(el)el.innerHTML='';});data.forEach(function(d){var pColor=d.priority==='긴급'?'bg-red-100 text-red-600':'bg-orange-100 text-orange-600';var el=document.getElementById('col-cs-'+(d.status||'대기'));if(!el)return;el.innerHTML+='<div data-id="'+d.id+'" class="bg-white p-5 r24 card-shadow border-2 border-transparent hover:border-orange-300 card-hover cursor-pointer"><div class="flex justify-between items-center mb-2"><span class="text-[10px] px-3 py-1 r20 font-black '+pColor+'">'+d.priority+'</span><div class="flex">'+avatarHtml(d.assignees,3)+'</div></div><h3 class="text-sm font-black text-gray-800 mb-1 truncate">'+esc(d.customer)+'</h3><p class="text-xs text-gray-500 line-clamp-2">'+esc(d.issue)+'</p></div>';});['대기','처리중','완료'].forEach(function(s){var el=document.getElementById('col-cs-'+s);if(!el)return;new Sortable(el,{group:'cs',onEnd:function(ev){var ns=ev.to.id.replace('col-cs-','');var cId=ev.item.getAttribute('data-id');var idx=CACHE.cs.findIndex(function(x){return x.id===cId;});if(idx>-1&&CACHE.cs[idx].status!==ns){CACHE.cs[idx].status=ns;FB.patch('cs/'+cId,{status:ns});}}});});}
-function openCSModal(){renderModalRoot('cs-modal','<div class="bg-white r35 modal-content max-w-md p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black mb-6 text-orange-500"><i class="ri-customer-service-2-fill"></i> 신규 CS 티켓</h2><input id="cs-customer" type="text" placeholder="고객사명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50"><select id="cs-priority" class="w-full border p-4 r24 mb-4 outline-none text-sm font-bold"><option value="긴급">긴급</option><option value="보통" selected>보통</option><option value="낮음">낮음</option></select><div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">담당자 할당</label><div id="cs-assignees" class="w-full border r24 bg-white max-h-40 overflow-y-auto hide-scrollbar shadow-inner"></div></div><textarea id="cs-issue" rows="4" placeholder="이슈 상세" class="w-full border p-4 r24 mb-6 outline-none text-sm"></textarea><div class="flex justify-end gap-3"><button onclick="closeModal(\'cs-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitCSTicket()" class="px-8 py-3.5 bg-orange-500 text-white r35 text-sm font-bold shadow-lg">생성</button></div></div>');openModal('cs-modal');populateAssignees('cs-assignees','');}
-function submitCSTicket(){var c=document.getElementById('cs-customer').value,i=document.getElementById('cs-issue').value,p=document.getElementById('cs-priority').value,a=getChecked('cs-assignees');if(!c||!i)return showToast("필수 입력");var id=genId();var obj={id:id,customer:c,issue:i,priority:p,status:'대기',assignees:a,creator:USER.email,timestamp:Date.now()};CACHE.cs.push(obj);closeModal('cs-modal');filterCS();showToast("접수 완료");FB.set('cs/'+id,obj);}
+/*═══════════ CS ═══════════*/
+function initCSTab(){
+  var el=document.getElementById('tab-cs');if(el.querySelector('#col-cs-대기'))return;
+  el.innerHTML='<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3"><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-customer-service-2-fill text-orange-500 mr-2"></i> CS 고객지원</h1><div class="flex gap-3 flex-wrap"><label class="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-600 bg-white px-3 py-2 r35 border border-gray-200 shadow-sm hover:bg-orange-50 transition"><input type="checkbox" id="cs-my-filter" onchange="filterCS()" class="w-4 h-4 accent-orange-500"> 내 업무만</label><input type="text" id="cs-search" oninput="filterCS()" placeholder="검색..." class="px-4 py-3 border r35 text-sm outline-none w-48 bg-white card-shadow"><button onclick="openCSModal()" class="bg-orange-500 text-white px-6 py-3 r35 text-sm font-bold shadow-lg">+ 티켓 생성</button></div></div><div class="flex gap-4 flex-1 pb-6 overflow-x-auto hide-scrollbar">'+[['대기','text-red-500','신규 접수'],['처리중','text-orange-500','처리 중'],['완료','text-gray-400','완료']].map(function(x){return'<div class="flex-1 min-w-[260px] bg-white p-5 r35 card-shadow flex flex-col"><h2 class="font-black '+x[1]+' text-sm uppercase mb-4 px-2 tracking-wider">'+x[2]+'</h2><div id="col-cs-'+x[0]+'" class="flex-1 space-y-4 overflow-y-auto hide-scrollbar"></div></div>';}).join('')+'</div>';
+}
 
+function filterCS(){
+  initCSTab();
+  var k=(document.getElementById('cs-search')||{value:''}).value.toLowerCase();
+  var myOnly = document.getElementById('cs-my-filter') && document.getElementById('cs-my-filter').checked;
+  renderCSUI(CACHE.cs.filter(function(c){
+    var isMy = !myOnly || (c.assignees||'').toLowerCase().indexOf(USER.email.toLowerCase())>-1;
+    return isMy && ((c.customer||'').toLowerCase().indexOf(k)>-1||(c.issue||'').toLowerCase().indexOf(k)>-1);
+  }));
+}
+
+function renderCSUI(data){
+  ['대기','처리중','완료'].forEach(function(s){var el=document.getElementById('col-cs-'+s);if(el)el.innerHTML='';});
+  data.forEach(function(d){
+    var pColor=d.priority==='긴급'?'bg-red-100 text-red-600':'bg-orange-100 text-orange-600';
+    var el=document.getElementById('col-cs-'+(d.status||'대기'));if(!el)return;
+    var tBadge = d.ticketId ? '<span class="text-orange-500 mr-1">['+d.ticketId+']</span>' : '';
+    el.innerHTML+='<div data-id="'+d.id+'" onclick="openCSDetail(\''+d.id+'\')" class="bg-white p-5 r24 card-shadow border-2 border-transparent hover:border-orange-300 card-hover cursor-pointer"><div class="flex justify-between items-center mb-2"><span class="text-[10px] px-3 py-1 r20 font-black '+pColor+'">'+d.priority+'</span><div class="flex">'+avatarHtml(d.assignees,3)+'</div></div><h3 class="text-sm font-black text-gray-800 mb-1 truncate">'+tBadge+esc(d.customer)+'</h3><p class="text-xs text-gray-500 line-clamp-2">'+esc(d.issue)+'</p></div>';
+  });
+  ['대기','처리중','완료'].forEach(function(s){
+    var el=document.getElementById('col-cs-'+s);if(!el)return;
+    new Sortable(el,{group:'cs',onEnd:function(ev){
+      var ns=ev.to.id.replace('col-cs-','');var cId=ev.item.getAttribute('data-id');var idx=CACHE.cs.findIndex(function(x){return x.id===cId;});
+      if(idx>-1&&CACHE.cs[idx].status!==ns){ CACHE.cs[idx].status=ns;FB.patch('cs/'+cId,{status:ns});if(ns==='완료')showToast('✅ CS 처리 완료!'); }
+    }});
+  });
+}
+
+// 수정 모드 지원하도록 openCSModal 변경
+function openCSModal(data){
+  renderModalRoot('cs-modal','<div class="bg-white r35 modal-content max-w-md p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black mb-6 text-orange-500"><i class="ri-customer-service-2-fill"></i> '+(data?'CS 티켓 수정':'신규 CS 티켓')+'</h2><input id="cs-customer" type="text" value="'+(data?esc(data.customer):'')+'" placeholder="고객사명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-orange-400"><select id="cs-priority" class="w-full border p-4 r24 mb-4 outline-none text-sm font-bold"><option value="긴급" '+(data&&data.priority==='긴급'?'selected':'')+'>긴급</option><option value="보통" '+(!data||data.priority==='보통'?'selected':'')+'>보통</option><option value="낮음" '+(data&&data.priority==='낮음'?'selected':'')+'>낮음</option></select><div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">담당자 할당</label><div id="cs-assignees" class="w-full border r24 bg-white max-h-40 overflow-y-auto hide-scrollbar shadow-inner"></div></div><textarea id="cs-issue" rows="4" placeholder="이슈 상세" class="w-full border p-4 r24 mb-6 outline-none text-sm focus:border-orange-400">'+(data?esc(data.issue):'')+'</textarea><input type="hidden" id="cs-edit-id" value="'+(data?data.id:'')+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'cs-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200">취소</button><button onclick="submitCSTicket()" class="px-8 py-3.5 bg-orange-500 text-white r35 text-sm font-bold shadow-lg hover:bg-orange-600">'+(data?'수정':'접수')+'</button></div></div>');
+  openModal('cs-modal');
+  populateAssignees('cs-assignees', data?data.assignees:'');
+}
+
+/* === CS 수정 코드 === */
+function submitCSTicket(){
+  var id=document.getElementById('cs-edit-id').value;
+  var c=document.getElementById('cs-customer').value,i=document.getElementById('cs-issue').value,p=document.getElementById('cs-priority').value,a=getChecked('cs-assignees');
+  if(!c||!i)return showToast("필수 입력");
+  if(id){
+    var idx=CACHE.cs.findIndex(function(x){return x.id===id;});
+    if(idx>-1){ Object.assign(CACHE.cs[idx], {customer:c,issue:i,priority:p,assignees:a}); FB.patch('cs/'+id, {customer:c,issue:i,priority:p,assignees:a}); }
+    closeModal('cs-modal'); filterCS(); showToast("수정 완료!");
+  } else {
+    var newId=genId();
+    var tId=getNextTicketId(CACHE.cs, 'CS'); // 티켓 번호 발급!
+    var obj={id:newId, ticketId:tId, customer:c,issue:i,priority:p,status:'대기',assignees:a,creator:USER.email,timestamp:Date.now()};
+    CACHE.cs.push(obj); closeModal('cs-modal'); filterCS(); showToast("접수 완료 ("+tId+")"); FB.set('cs/'+newId,obj);
+  }
+}
+
+// (신규) CS 디테일 및 코멘트 기능 추가
+function openCSDetail(id){
+  var d=CACHE.cs.find(function(x){return String(x.id)===String(id);});if(!d)return;
+  var cList=Object.keys(CACHE.comments||{}).map(function(k){return CACHE.comments[k];}).filter(function(c){return c.targetId===id;}).sort(function(a,b){return new Date(a.date)-new Date(b.date);});
+  var tBadge = d.ticketId ? '<span class="text-orange-500 mr-2 bg-orange-50 px-2 py-1 r20 text-sm font-black">['+d.ticketId+']</span>' : '';
+  
+  var leftHtml = '<div class="flex-1 p-8 md:p-10 overflow-y-auto"><h2 class="text-2xl md:text-3xl font-black text-gray-900 mb-4 pr-10">'+tBadge+esc(d.customer)+'</h2><div class="flex gap-2 mb-6"><span class="text-xs px-3 py-1 r20 font-black '+(d.priority==='긴급'?'bg-red-100 text-red-600':'bg-orange-100 text-orange-600')+'">'+d.priority+'</span><span class="text-xs px-3 py-1 r20 font-black bg-gray-100 text-gray-600">'+d.status+'</span></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 bg-gray-50 p-5 r24 text-sm"><div class="md:col-span-2"><span class="text-gray-400 text-xs font-bold mb-1 block">할당된 담당자</span><div class="flex gap-1 mt-1">'+avatarHtml(d.assignees,8)+'</div></div></div><div class="bg-gray-50 p-5 r24 mb-6"><p class="text-xs font-black text-gray-400 mb-2">접수 내용 (이슈 상세)</p><p class="text-sm text-gray-700 whitespace-pre-wrap">'+esc(d.issue||'내용 없음')+'</p></div><div class="flex justify-end gap-3"><button onclick="closeModal(\'cs-detail-modal\');openCSModal(CACHE.cs.find(function(x){return x.id===\''+d.id+'\';}))" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">수정</button>'+(d.status!=='완료'?'<button onclick="markCSDone(\''+d.id+'\')" class="px-6 py-3 bg-orange-500 text-white r35 text-sm font-bold hover:bg-orange-600 transition shadow-lg">완료 처리</button>':'')+'<button onclick="confirmDeleteCS(\''+d.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold hover:bg-red-100 transition">삭제</button></div></div>';
+  var rightHtml = '<div class="w-full md:w-[360px] bg-gray-50 border-l p-8 flex flex-col h-[600px] md:h-auto"><h3 class="font-black text-lg mb-4 text-gray-800"><i class="ri-chat-3-fill text-orange-500 mr-2"></i>처리 히스토리</h3><div id="cs-cmt-list" class="flex-1 overflow-y-auto space-y-3 hide-scrollbar mb-4">'+(cList.length?cList.map(function(c){var ctext = esc(c.content).replace(/@([^\s]+)/g, '<span class="text-orange-600 font-bold bg-orange-100 px-1 r20">@$1</span>');return'<div class="bg-white p-4 r20 shadow-sm border border-gray-100"><div class="flex justify-between items-center mb-1"><span class="font-black text-xs text-gray-800">'+c.authorName+'</span><span class="text-[10px] text-gray-400">'+c.date+'</span></div><p class="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">'+ctext+'</p></div>';}).join(''):'<p class="text-xs text-gray-400 text-center py-10">기록이 없습니다.<br>진행 상황을 남겨주세요.</p>')+'</div><div class="relative"><textarea id="cs-cmt-in" rows="3" placeholder="진행 상황, 고객 응대 내용 기록..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-orange-400 shadow-sm bg-white"></textarea><button onclick="submitCSComment(\''+d.id+'\')" class="absolute bottom-4 right-4 bg-orange-500 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-orange-600 transition"><i class="ri-send-plane-fill text-sm"></i></button></div></div>';
+  renderModalRoot('cs-detail-modal','<div class="bg-white r35 modal-content max-w-5xl p-0 shadow-2xl relative fade-in flex flex-col md:flex-row overflow-hidden"><button onclick="closeModal(\'cs-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black z-10"><i class="ri-close-line text-3xl"></i></button>'+leftHtml+rightHtml+'</div>');
+  openModal('cs-detail-modal'); var cl=document.getElementById('cs-cmt-list');if(cl)cl.scrollTop=cl.scrollHeight;
+}
+
+function submitCSComment(id){
+  var inp=document.getElementById('cs-cmt-in');if(!inp||!inp.value.trim())return;
+  var msg=inp.value; inp.value=''; var cId=genId();
+  var c={targetId:id,email:USER.email,authorName:USER.name,content:msg,date:nowFmt()};
+  CACHE.comments[cId]=c; FB.set('comments/'+cId,c);
+  openCSDetail(id); // 화면 새로고침
+}
+
+function markCSDone(id){
+  var d=CACHE.cs.find(function(x){return String(x.id)===String(id);});if(!d)return;
+  openCustomConfirm("CS 완료 처리", "고객 지원 건을 완료로 이동하시겠습니까?", function(){
+    d.status='완료';
+    FB.patch('cs/'+id,{status:'완료'});
+    closeModal('cs-detail-modal');
+    filterCS();
+    showToast("✅ CS 처리 완료!");
+  });
+}
+
+function confirmDeleteCS(id){
+  openCustomConfirm("CS 삭제","정말 삭제하시겠습니까?",function(){
+    CACHE.cs=CACHE.cs.filter(function(x){return x.id!==id;});
+    closeModal('cs-detail-modal');
+    filterCS();
+    FB.remove('cs/'+id);
+    showToast("삭제 완료");
+  });
+}
 // ═══════════════════════════════════════════════
 //  결재 (1차 결재권자 = 해당 팀장 자동 지정)
 // ═══════════════════════════════════════════════
@@ -621,7 +734,6 @@ function toggleApprUrgent(){
     if(warn)warn.classList.add('hidden');
   }
 }
-// ▼ 기존 addApprItemRow 함수를 지우고 아래 코드로 덮어쓰세요 ▼
 function addApprItemRow(){
   var bankOpts='<option value="">은행</option><option>국민은행</option><option>신한은행</option><option>우리은행</option><option>하나은행</option><option>농협은행</option><option>기업은행</option><option>카카오뱅크</option><option>토스뱅크</option><option>기타</option>';
   var html='<div class="appr-item-row bg-gray-50 border border-gray-100 p-5 r35 relative mb-3">'+
@@ -631,19 +743,22 @@ function addApprItemRow(){
     '<select class="appr-reason-select border p-3 r24 text-sm font-bold outline-none bg-white" onchange="var row=this.closest(\'.appr-item-row\');row.querySelector(\'.appr-reason-custom\').classList.toggle(\'hidden\',this.value!==\'기타\');">'+
     '<option value="">분류 선택 *</option><option value="식대">식대</option><option value="교통/유류비">교통/유류비</option><option value="사무용품/비품">사무용품/비품</option><option value="소프트웨어/구독">소프트웨어/구독</option><option value="회의비">회의비</option><option value="접대비">접대비</option><option value="출장비">출장비</option><option value="기타">기타</option></select>'+
     '<input type="text" class="appr-reason-custom hidden border p-3 r24 text-sm outline-none bg-white" placeholder="기타 사유 입력"></div>'+
-    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">상세 내역</label>'+
-    '<input type="text" class="appr-detail w-full border p-3 r24 text-sm outline-none bg-white mb-3" placeholder="예: 4/3 점심 팀 회식 5명, 택시비 강남→판교, AWS 월 구독료 등">'+
+    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">상세 내역 및 영수증 첨부</label>'+
+    // 상세내역과 파일첨부를 flex로 묶어서 나란히 배치했습니다.
+    '<div class="flex flex-col md:flex-row gap-2 mb-3">'+
+    '<input type="text" class="appr-detail flex-1 border p-3 r24 text-sm outline-none bg-white" placeholder="예: 4/3 점심 팀 회식 5명, 택시비 강남→판교, AWS 월 구독료 등">'+
+    '<div class="flex items-center bg-white border border-blue-200 p-2 r24 overflow-hidden shrink-0 md:w-64 cursor-pointer hover:bg-blue-50 transition"><i class="ri-attachment-line text-blue-500 ml-2 mr-2"></i><input type="file" class="appr-file text-xs w-full outline-none cursor-pointer" accept="image/*,application/pdf"></div>'+
+    '</div>'+
     '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">결제 수단</label>'+
     '<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">'+
     '<select class="appr-pay-method border p-3 r24 text-sm font-bold outline-none bg-white">'+
     '<option value="법인카드">법인카드</option><option value="개인카드 (환급)">개인카드 (환급)</option><option value="현금 (환급)">현금 (환급)</option><option value="계좌이체">계좌이체</option></select>'+
     '<input type="text" class="appr-pay-detail border p-3 r24 text-sm outline-none bg-white" placeholder="카드번호 뒤 4자리 / 참고사항"></div>'+
-    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">입금 정보 및 영수증 첨부</label>'+
-    '<div class="grid grid-cols-1 md:grid-cols-4 gap-3">'+
+    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">입금 정보</label>'+
+    '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">'+
     '<select class="appr-bank border p-3 r24 text-sm font-bold outline-none bg-white">'+bankOpts+'</select>'+
     '<input type="text" class="appr-account border p-3 r24 text-sm font-bold bg-white" placeholder="계좌번호">'+
     '<input type="number" class="appr-amount border p-3 r24 text-base font-black text-green-600 bg-white" placeholder="금액(원)">'+
-    '<div class="flex items-center bg-white border p-2 r24 overflow-hidden"><i class="ri-image-add-line text-gray-400 ml-2 mr-2"></i><input type="file" class="appr-file text-xs w-full outline-none" accept="image/*,application/pdf"></div>'+
     '</div></div>';
   var c2=document.getElementById('appr-items-container');if(c2)c2.insertAdjacentHTML('beforeend',html);
 }
@@ -731,37 +846,102 @@ function renderVault(){var el=document.getElementById('tab-vault');if(!el.queryS
 function filterVaultUI(){var k=(document.getElementById('vault-search-input')||{value:''}).value.toLowerCase().trim();renderVaultGrid(k?CACHE.vault.filter(function(v){return String(v.category||'').toLowerCase().indexOf(k)>-1||String(v.loginId||'').toLowerCase().indexOf(k)>-1;}):CACHE.vault);}
 function renderVaultGrid(data){var el=document.getElementById('vault-grid');if(!el)return;el.innerHTML=!data.length?'<p class="col-span-3 text-sm text-gray-400 text-center py-10">등록된 계정이 없습니다.</p>':data.map(function(d){return'<div class="p-6 md:p-8 border border-amber-200 r35 bg-white card-shadow relative"><button onclick="event.stopPropagation();openVaultModal(\''+d.id+'\')" class="absolute top-5 right-14 text-gray-400 hover:text-amber-600"><i class="ri-edit-line text-xl"></i></button><button onclick="event.stopPropagation();confirmDeleteVault(\''+d.id+'\')" class="absolute top-5 right-5 text-red-300 hover:text-red-500"><i class="ri-delete-bin-line text-xl"></i></button><h3 class="font-black text-xl text-gray-800 mb-4 truncate pr-16"><i class="ri-key-2-fill text-amber-500 mr-2"></i>'+esc(d.category)+'</h3><div class="bg-amber-50/50 rounded-2xl p-4 text-sm mb-3 border border-amber-100"><div class="flex justify-between items-center mb-3"><span class="text-amber-700 text-xs font-bold">ID</span><span class="font-bold cursor-pointer bg-white px-3 py-1 r20 shadow-sm text-sm" onclick="navigator.clipboard.writeText(\''+esc(d.loginId)+'\').then(function(){showToast(\'복사!\');})">'+esc(d.loginId)+' <i class="ri-file-copy-line text-xs"></i></span></div><div class="flex justify-between items-center"><span class="text-amber-700 text-xs font-bold">PW</span><span class="font-bold cursor-pointer bg-white px-3 py-1 r20 shadow-sm text-sm" onclick="copyVaultPw(\''+d.id+'\')">•••••••• <i class="ri-file-copy-line text-xs"></i></span></div></div><p class="text-[10px] text-gray-400 font-bold">권한: '+d.visibility+'</p></div>';}).join('');}
 function copyVaultPw(id){db.ref('vault/'+id).once('value',function(snap){var v=snap.val();if(!v){showToast("계정 없음");return;}var ok=USER.role==='ADMIN'||v.creator===USER.email||v.visibility==='ALL'||(v.visibility||'').indexOf(USER.dept)>-1||(v.visibility||'').indexOf(USER.email)>-1;if(ok){navigator.clipboard.writeText(v.password).then(function(){showToast("PW 복사 완료!");});}else showToast("권한 없음");});}
-function openVaultModal(id){var v=id?CACHE.vault.find(function(x){return String(x.id)===String(id);}):null;renderModalRoot('vault-modal','<div class="bg-white r35 modal-content max-w-lg p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black mb-6 text-amber-600"><i class="ri-shield-keyhole-fill"></i> '+(v?'수정':'보안 계정 등록')+'</h2><input id="vault-category" type="text" value="'+(v?esc(v.category):'')+'" placeholder="서비스명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50"><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><div><input id="vault-loginid" type="text" value="'+(v?esc(v.loginId):'')+'" placeholder="ID" class="w-full border p-4 r24 outline-none text-sm"></div><div><input id="vault-password" type="password" placeholder="'+(v?'변경시만 입력':'PW')+'" class="w-full border p-4 r24 outline-none text-sm"></div></div><textarea id="vault-note" rows="2" placeholder="비고" class="w-full border p-4 r24 mb-4 outline-none text-sm">'+(v?esc(v.note||''):'')+'</textarea><select id="vault-visibility-select" class="w-full border p-4 r24 mb-6 outline-none text-sm font-bold bg-amber-50"><option value="PRIVATE" '+((!v||v.visibility==='PRIVATE')?'selected':'')+'>나만 보기</option><option value="ALL" '+(v&&v.visibility==='ALL'?'selected':'')+'>전체 공개</option></select><input type="hidden" id="vault-edit-id" value="'+(v?v.id:'')+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'vault-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitVault()" class="px-8 py-3.5 bg-amber-500 text-white r35 text-sm font-bold shadow-lg">저장</button></div></div>');openModal('vault-modal');}
-function submitVault(){var id=document.getElementById('vault-edit-id').value;var cat=document.getElementById('vault-category').value.trim(),lid=document.getElementById('vault-loginid').value,pw=document.getElementById('vault-password').value,note=document.getElementById('vault-note').value,vis=document.getElementById('vault-visibility-select').value;if(!cat||!lid||(id===''&&!pw))return showToast("필수 항목 입력");if(id){var updates={category:cat,loginId:lid,note:note,visibility:vis};if(pw)updates.password=pw;var idx=CACHE.vault.findIndex(function(x){return String(x.id)===String(id);});if(idx>-1)Object.assign(CACHE.vault[idx],updates);closeModal('vault-modal');showToast("수정 완료");renderVault();FB.patch('vault/'+id,updates);}else{if(!pw)return showToast("비밀번호 입력");var newId=genId();var obj={id:newId,category:cat,loginId:lid,password:pw,note:note,visibility:vis,creator:USER.email};CACHE.vault.push(Object.assign({},obj,{password:'••••••••'}));closeModal('vault-modal');showToast("등록 완료");renderVault();FB.set('vault/'+newId,obj);}}
+function openVaultModal(id){
+  var v=id?CACHE.vault.find(function(x){return String(x.id)===String(id);}):null;
+  var teamVal = USER.dept || 'TEAM';
+  var isTeam = v && v.visibility === teamVal;
+  var isAll = v && v.visibility === 'ALL';
+  var isPrivate = !v || v.visibility === 'PRIVATE';
+  
+  renderModalRoot('vault-modal','<div class="bg-white r35 modal-content max-w-lg p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black mb-6 text-amber-600"><i class="ri-shield-keyhole-fill"></i> '+(v?'수정':'보안 계정 등록')+'</h2><input id="vault-category" type="text" value="'+(v?esc(v.category):'')+'" placeholder="서비스명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50"><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><div><input id="vault-loginid" type="text" value="'+(v?esc(v.loginId):'')+'" placeholder="ID" class="w-full border p-4 r24 outline-none text-sm"></div><div><input id="vault-password" type="password" placeholder="'+(v?'변경시만 입력':'PW')+'" class="w-full border p-4 r24 outline-none text-sm"></div></div><textarea id="vault-note" rows="2" placeholder="비고" class="w-full border p-4 r24 mb-4 outline-none text-sm">'+(v?esc(v.note||''):'')+'</textarea><select id="vault-visibility-select" class="w-full border p-4 r24 mb-6 outline-none text-sm font-bold bg-amber-50"><option value="PRIVATE" '+(isPrivate?'selected':'')+'>나만 보기</option><option value="TEAM" '+(isTeam?'selected':'')+'>우리 팀('+esc(USER.dept)+')만 보기</option><option value="ALL" '+(isAll?'selected':'')+'>전체 공개</option></select><input type="hidden" id="vault-edit-id" value="'+(v?v.id:'')+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'vault-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitVault()" class="px-8 py-3.5 bg-amber-500 text-white r35 text-sm font-bold shadow-lg">저장</button></div></div>');
+  openModal('vault-modal');
+}
+
+function submitVault(){
+  var id=document.getElementById('vault-edit-id').value;
+  var cat=document.getElementById('vault-category').value.trim(),lid=document.getElementById('vault-loginid').value,pw=document.getElementById('vault-password').value,note=document.getElementById('vault-note').value;
+  
+  // 권한 설정: 'TEAM'을 선택하면 로그인한 유저의 소속 부서 이름으로 치환하여 저장
+  var visRaw=document.getElementById('vault-visibility-select').value;
+  var vis = (visRaw === 'TEAM') ? USER.dept : visRaw; 
+
+  if(!cat||!lid||(id===''&&!pw))return showToast("필수 항목 입력");
+  if(id){
+    var updates={category:cat,loginId:lid,note:note,visibility:vis};
+    if(pw)updates.password=pw;
+    var idx=CACHE.vault.findIndex(function(x){return String(x.id)===String(id);});
+    if(idx>-1)Object.assign(CACHE.vault[idx],updates);
+    closeModal('vault-modal');showToast("수정 완료");renderVault();FB.patch('vault/'+id,updates);
+  }else{
+    if(!pw)return showToast("비밀번호 입력");
+    var newId=genId();var obj={id:newId,category:cat,loginId:lid,password:pw,note:note,visibility:vis,creator:USER.email};
+    CACHE.vault.push(Object.assign({},obj,{password:'••••••••'}));
+    closeModal('vault-modal');showToast("등록 완료");renderVault();FB.set('vault/'+newId,obj);
+  }
+}
 function confirmDeleteVault(id){openCustomConfirm("계정 삭제","삭제할까요?",function(){CACHE.vault=CACHE.vault.filter(function(x){return x.id!==id;});showToast("삭제됨");renderVault();FB.remove('vault/'+id);});}
 
-// ═══════════════════════════════════════════════
-//  위키 (PDF 업로드 지원)
-// ═══════════════════════════════════════════════
+/*═══════════ 위키 (Quill 에디터 적용) ═══════════*/
+var quillEditor = null;
+
 function renderWiki(){var el=document.getElementById('tab-wiki');if(!el.querySelector('#wiki-search-input')){el.innerHTML='<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-3"><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-book-read-fill text-gray-800 mr-2"></i> 사내 위키</h1><div class="flex items-center gap-3 flex-wrap"><input type="text" id="wiki-search-input" oninput="filterWikiUI()" placeholder="검색..." class="px-4 py-3 border r35 text-sm outline-none w-56 bg-white card-shadow"><button onclick="openWikiModal()" class="bg-gray-800 text-white px-6 py-3 r35 text-sm font-bold shadow-lg">+ 새 문서</button></div></div><div id="wiki-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>';}filterWikiUI();}
-function filterWikiUI(){var k=(document.getElementById('wiki-search-input')||{value:''}).value.toLowerCase();var data=CACHE.wiki.filter(function(w){return(w.title||'').toLowerCase().indexOf(k)>-1||(w.content||'').toLowerCase().indexOf(k)>-1;});var el=document.getElementById('wiki-grid');if(!el)return;el.innerHTML=!data.length?'<p class="col-span-2 text-sm text-gray-400 text-center py-10">문서가 없습니다.</p>':data.map(function(d){var isPdf=!!d.pdfData;return'<div onclick="openWikiDetail(\''+d.id+'\')" class="p-6 md:p-8 border r35 bg-white card-shadow hover:shadow-xl card-hover cursor-pointer transition"><div class="flex items-center gap-3 mb-3">'+(isPdf?'<i class="ri-file-pdf-2-fill text-red-500 text-2xl shrink-0"></i>':'<i class="ri-file-text-line text-gray-400 text-2xl shrink-0"></i>')+'<h3 class="font-black text-xl md:text-2xl text-gray-800 truncate">'+esc(d.title)+'</h3></div><p class="text-sm text-gray-500 line-clamp-3 leading-relaxed">'+(isPdf?'📄 PDF 문서':esc(d.content))+'</p><p class="text-[10px] text-gray-400 mt-3 font-bold">'+getMemberName(d.author)+'</p></div>';}).join('');}
-function openWikiModal(){renderModalRoot('wiki-modal','<div class="bg-white r35 modal-content max-w-3xl p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black mb-6 text-gray-800">새 문서 작성</h2><input id="wiki-title" type="text" placeholder="문서 제목" class="w-full text-2xl font-black border-b-2 mb-6 p-3 outline-none text-gray-800"><div class="flex gap-3 mb-4"><button onclick="showWikiTextForm()" id="wiki-tab-text" class="px-4 py-2 r24 text-sm font-bold bg-gray-100 text-gray-800">텍스트</button><button onclick="showWikiPdfForm()" id="wiki-tab-pdf" class="px-4 py-2 r24 text-sm font-bold text-gray-400">PDF 업로드</button></div><div id="wiki-text-form"><textarea id="wiki-content" rows="10" placeholder="내용을 입력하세요..." class="w-full border r24 p-5 mb-6 outline-none text-base leading-relaxed bg-gray-50"></textarea></div><div id="wiki-pdf-form" class="hidden"><label class="flex flex-col items-center justify-center w-full h-40 upload-zone r24 bg-white mb-6"><i class="ri-file-pdf-2-fill text-5xl text-red-400 mb-2"></i><span class="text-sm font-bold text-gray-400" id="wiki-pdf-name">클릭하여 PDF 업로드</span><input type="file" accept=".pdf" class="hidden" id="wiki-pdf-input" onchange="handleWikiPdf(this)"></label></div><div class="flex justify-end gap-3"><button onclick="closeModal(\'wiki-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitWiki()" class="px-8 py-3.5 bg-gray-900 text-white r35 text-sm font-bold shadow-lg">게시</button></div></div>');openModal('wiki-modal');}
+
+function filterWikiUI(){var k=(document.getElementById('wiki-search-input')||{value:''}).value.toLowerCase();var data=CACHE.wiki.filter(function(w){return(w.title||'').toLowerCase().indexOf(k)>-1||(w.content||'').toLowerCase().indexOf(k)>-1;});var el=document.getElementById('wiki-grid');if(!el)return;el.innerHTML=!data.length?'<p class="col-span-2 text-sm text-gray-400 text-center py-10">문서가 없습니다.</p>':data.map(function(d){var isPdf=!!d.pdfData; var previewText = isPdf ? '📄 PDF 문서' : esc(d.content.replace(/<[^>]*>?/gm, '')); return'<div onclick="openWikiDetail(\''+d.id+'\')" class="p-6 md:p-8 border r35 bg-white card-shadow hover:shadow-xl card-hover cursor-pointer transition"><div class="flex items-center gap-3 mb-3">'+(isPdf?'<i class="ri-file-pdf-2-fill text-red-500 text-2xl shrink-0"></i>':'<i class="ri-file-text-line text-gray-400 text-2xl shrink-0"></i>')+'<h3 class="font-black text-xl md:text-2xl text-gray-800 truncate">'+esc(d.title)+'</h3></div><p class="text-sm text-gray-500 line-clamp-3 leading-relaxed">'+previewText+'</p><p class="text-[10px] text-gray-400 mt-3 font-bold">'+getMemberName(d.author)+'</p></div>';}).join('');}
+
+function openWikiModal(){
+  renderModalRoot('wiki-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black mb-6 text-gray-800">새 문서 작성</h2><input id="wiki-title" type="text" placeholder="문서 제목" class="w-full text-2xl font-black border-b-2 mb-6 p-3 outline-none text-gray-800"><div class="flex gap-3 mb-4"><button onclick="showWikiTextForm()" id="wiki-tab-text" class="px-4 py-2 r24 text-sm font-bold bg-gray-100 text-gray-800">에디터 작성</button><button onclick="showWikiPdfForm()" id="wiki-tab-pdf" class="px-4 py-2 r24 text-sm font-bold text-gray-400">PDF 파일 업로드</button></div><div id="wiki-text-form" class="mb-6"><div id="wiki-quill-container" style="height: 350px;" class="bg-gray-50 r24"></div></div><div id="wiki-pdf-form" class="hidden"><label class="flex flex-col items-center justify-center w-full h-40 upload-zone r24 bg-white mb-6"><i class="ri-file-pdf-2-fill text-5xl text-red-400 mb-2"></i><span class="text-sm font-bold text-gray-400" id="wiki-pdf-name">클릭하여 PDF 업로드</span><input type="file" accept=".pdf" class="hidden" id="wiki-pdf-input" onchange="handleWikiPdf(this)"></label></div><div class="flex justify-end gap-3"><button onclick="closeModal(\'wiki-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitWiki()" class="px-8 py-3.5 bg-gray-900 text-white r35 text-sm font-bold shadow-lg">게시</button></div></div>');
+  openModal('wiki-modal');
+  quillEditor = new Quill('#wiki-quill-container', { theme: 'snow', placeholder: '내용을 입력하세요...' });
+}
+
 function showWikiTextForm(){document.getElementById('wiki-text-form').classList.remove('hidden');document.getElementById('wiki-pdf-form').classList.add('hidden');document.getElementById('wiki-tab-text').className='px-4 py-2 r24 text-sm font-bold bg-gray-100 text-gray-800';document.getElementById('wiki-tab-pdf').className='px-4 py-2 r24 text-sm font-bold text-gray-400';}
 function showWikiPdfForm(){document.getElementById('wiki-text-form').classList.add('hidden');document.getElementById('wiki-pdf-form').classList.remove('hidden');document.getElementById('wiki-tab-pdf').className='px-4 py-2 r24 text-sm font-bold bg-red-100 text-red-700';document.getElementById('wiki-tab-text').className='px-4 py-2 r24 text-sm font-bold text-gray-400';}
+
 var wikiPdfBase64=null;
 function handleWikiPdf(input){if(!input.files[0])return;var file=input.files[0];if(file.size>5*1024*1024){showToast("5MB 이하 파일만 가능합니다.");return;}document.getElementById('wiki-pdf-name').innerText=file.name;var reader=new FileReader();reader.onload=function(e){wikiPdfBase64=e.target.result;};reader.readAsDataURL(file);}
-function submitWiki(){var t=document.getElementById('wiki-title').value;if(!t)return showToast("제목을 입력하세요.");var isPdfMode=!document.getElementById('wiki-pdf-form').classList.contains('hidden');var id=genId();if(isPdfMode&&wikiPdfBase64){var obj={id:id,title:t,author:USER.email,content:'[PDF 문서]',pdfData:wikiPdfBase64,visibility:'ALL',createdAt:Date.now()};CACHE.wiki.push(obj);closeModal('wiki-modal');wikiPdfBase64=null;showToast("PDF 문서 저장 완료");filterWikiUI();FB.set('wiki/'+id,obj);}else{var c=document.getElementById('wiki-content').value;var obj2={id:id,title:t,author:USER.email,content:c,visibility:'ALL',createdAt:Date.now()};CACHE.wiki.push(obj2);closeModal('wiki-modal');showToast("저장 완료");filterWikiUI();FB.set('wiki/'+id,obj2);}}
-function openWikiDetail(id){var w=CACHE.wiki.find(function(x){return String(x.id)===String(id);});if(!w)return;var isPdf=!!w.pdfData;var canEdit=USER.role==='ADMIN'||w.author===USER.email;renderModalRoot('wiki-detail-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-12 shadow-2xl relative fade-in"><button onclick="closeModal(\'wiki-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-2xl md:text-3xl font-black mb-4 text-gray-900 pr-10">'+esc(w.title)+'</h2><p class="text-sm font-bold text-gray-400 mb-6 pb-4 border-b">작성자: '+getMemberName(w.author)+'</p>'+(isPdf?'<div class="text-center mb-6"><a href="'+w.pdfData+'" download="'+esc(w.title)+'.pdf" class="inline-flex items-center gap-3 bg-red-50 text-red-600 px-8 py-4 r35 font-bold text-base hover:bg-red-100 transition"><i class="ri-file-pdf-2-fill text-2xl"></i> PDF 다운로드</a></div>':'<div class="text-base md:text-lg text-gray-700 whitespace-pre-wrap leading-loose min-h-[150px] mb-6">'+esc(w.content)+'</div>')+(canEdit?'<div class="flex justify-end gap-3 border-t pt-6">'+(isPdf?'':'<button onclick="openWikiEditModal(\''+w.id+'\')" class="px-6 py-3 bg-blue-50 text-blue-600 r35 text-sm font-bold">수정</button>')+'<button onclick="confirmDeleteWiki(\''+w.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold">삭제</button></div>':'')+'</div>');openModal('wiki-detail-modal');}
+
+function submitWiki(){
+  var t=document.getElementById('wiki-title').value;if(!t)return showToast("제목을 입력하세요.");
+  var isPdfMode=!document.getElementById('wiki-pdf-form').classList.contains('hidden');
+  var id=genId();
+  if(isPdfMode&&wikiPdfBase64){
+    var obj={id:id,title:t,author:USER.email,content:'[PDF 문서]',pdfData:wikiPdfBase64,visibility:'ALL',createdAt:Date.now()};
+    CACHE.wiki.push(obj);closeModal('wiki-modal');wikiPdfBase64=null;showToast("PDF 문서 저장 완료");filterWikiUI();FB.set('wiki/'+id,obj);
+  }else{
+    if(quillEditor.getText().trim()==='') return showToast("내용을 입력하세요.");
+    var c=quillEditor.root.innerHTML;
+    var obj2={id:id,title:t,author:USER.email,content:c,isHtml:true,visibility:'ALL',createdAt:Date.now()};
+    CACHE.wiki.push(obj2);closeModal('wiki-modal');showToast("저장 완료");filterWikiUI();FB.set('wiki/'+id,obj2);
+  }
+}
+
+function openWikiDetail(id){
+  var w=CACHE.wiki.find(function(x){return String(x.id)===String(id);});if(!w)return;
+  var isPdf=!!w.pdfData;var canEdit=USER.role==='ADMIN'||w.author===USER.email;
+  var contentHtml = w.isHtml ? w.content : esc(w.content);
+  renderModalRoot('wiki-detail-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-12 shadow-2xl relative fade-in"><button onclick="closeModal(\'wiki-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-2xl md:text-3xl font-black mb-4 text-gray-900 pr-10">'+esc(w.title)+'</h2><p class="text-sm font-bold text-gray-400 mb-6 pb-4 border-b">작성자: '+getMemberName(w.author)+'</p>'+(isPdf?'<div class="text-center mb-6"><a href="'+w.pdfData+'" download="'+esc(w.title)+'.pdf" class="inline-flex items-center gap-3 bg-red-50 text-red-600 px-8 py-4 r35 font-bold text-base hover:bg-red-100 transition"><i class="ri-file-pdf-2-fill text-2xl"></i> PDF 다운로드</a></div>':'<div class="ql-editor p-0 text-base md:text-lg text-gray-800 leading-relaxed min-h-[150px] mb-6">'+contentHtml+'</div>')+(canEdit?'<div class="flex justify-end gap-3 border-t pt-6">'+(isPdf?'':'<button onclick="openWikiEditModal(\''+w.id+'\')" class="px-6 py-3 bg-blue-50 text-blue-600 r35 text-sm font-bold">수정</button>')+'<button onclick="confirmDeleteWiki(\''+w.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold">삭제</button></div>':'')+'</div>');
+  openModal('wiki-detail-modal');
+}
+
 function confirmDeleteWiki(id){openCustomConfirm("문서 삭제","삭제하시겠습니까?",function(){CACHE.wiki=CACHE.wiki.filter(function(x){return x.id!==id;});closeModal('wiki-detail-modal');showToast("삭제 완료");filterWikiUI();FB.remove('wiki/'+id);});}
+
 function openWikiEditModal(id){
   var w=CACHE.wiki.find(function(x){return String(x.id)===String(id);});if(!w)return;
   closeModal('wiki-detail-modal');
-  renderModalRoot('wiki-edit-modal','<div class="bg-white r35 modal-content max-w-3xl p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black mb-6 text-gray-800">문서 수정</h2><input id="wiki-edit-title" type="text" value="'+esc(w.title)+'" class="w-full text-2xl font-black border-b-2 mb-6 p-3 outline-none text-gray-800"><textarea id="wiki-edit-content" rows="12" class="w-full border r24 p-5 mb-6 outline-none text-base leading-relaxed bg-gray-50">'+esc(w.content)+'</textarea><input type="hidden" id="wiki-edit-id" value="'+w.id+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'wiki-edit-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitWikiEdit()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">저장</button></div></div>');
+  renderModalRoot('wiki-edit-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black mb-6 text-gray-800">문서 수정</h2><input id="wiki-edit-title" type="text" value="'+esc(w.title)+'" class="w-full text-2xl font-black border-b-2 mb-6 p-3 outline-none text-gray-800"><div id="wiki-edit-quill-container" style="height: 350px;" class="mb-6 bg-gray-50 r24"></div><input type="hidden" id="wiki-edit-id" value="'+w.id+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'wiki-edit-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitWikiEdit()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">저장</button></div></div>');
   openModal('wiki-edit-modal');
+  quillEditor = new Quill('#wiki-edit-quill-container', { theme: 'snow' });
+  if(w.isHtml) quillEditor.root.innerHTML = w.content; else quillEditor.setText(w.content);
 }
+
 function submitWikiEdit(){
   var id=document.getElementById('wiki-edit-id').value;
   var title=document.getElementById('wiki-edit-title').value.trim();
-  var content=document.getElementById('wiki-edit-content').value;
+  var content=quillEditor.root.innerHTML;
   if(!title)return showToast("제목을 입력하세요.");
   var w=CACHE.wiki.find(function(x){return x.id===id;});
-  if(w){w.title=title;w.content=content;w.updatedAt=Date.now();}
-  FB.patch('wiki/'+id,{title:title,content:content,updatedAt:Date.now()});
+  if(w){w.title=title;w.content=content;w.isHtml=true;w.updatedAt=Date.now();}
+  FB.patch('wiki/'+id,{title:title,content:content,isHtml:true,updatedAt:Date.now()});
   closeModal('wiki-edit-modal');showToast("수정 완료");filterWikiUI();
 }
 
@@ -943,4 +1123,107 @@ function toggleDarkMode(){
   } else {
     showToast("☀️ 라이트 모드로 돌아왔습니다.");
   }
+}
+
+/*═══════════ 실시간 팝업 알림 (Real-time) ═══════════*/
+var isInitialLoad = true;
+function setupRealtimeListeners() {
+  // 1. 코멘트(댓글)에서 나를 멘션했을 때
+  db.ref('comments').on('child_added', function(snap) {
+    if(isInitialLoad) return; // 첫 로딩 때 쏟아지는 과거 데이터는 무시
+    var c = snap.val();
+    if(c.authorName !== USER.name && c.content.indexOf('@'+USER.name) > -1) {
+      showToast("🔔 " + c.authorName + "님이 코멘트에서 회원님을 호출했습니다.");
+      refreshNotifBadge(); 
+    }
+  });
+
+  // 2. 내 휴가 신청 상태가 변경되었을 때
+  db.ref('leaves').on('child_changed', function(snap) {
+    var l = snap.val();
+    if(l.applicant === USER.email && (l.status === '승인' || l.status === '반려')) {
+      showToast("🔔 내 휴가 신청이 [" + l.status + "] 처리되었습니다.");
+    }
+  });
+  
+  // 초기 데이터가 전부 불러와진 후(3초 뒤)부터 알림 활성화
+  setTimeout(function(){ isInitialLoad = false; }, 3000);
+}
+
+/*═══════════ 티켓 번호 자동 생성기 ═══════════*/
+function getNextTicketId(list, prefix) {
+  var max = 0;
+  list.forEach(function(item) {
+    if(item.ticketId && item.ticketId.startsWith(prefix+'-')) {
+      var num = parseInt(item.ticketId.split('-')[1], 10);
+      if(num > max) max = num;
+    }
+  });
+  return prefix + '-' + String(max + 1).padStart(3, '0');
+}
+
+/*═══════════ 누락된 디버깅 추가 함수들 ═══════════*/
+
+// 1. 초기 로딩 시 호출되는 스켈레톤 UI 더미 함수
+function showSkeleton(){
+  // 필요 시 로딩 스피너 로직 추가
+  console.log("로딩 중...");
+}
+
+// 2. 결재 기안 철회
+function withdrawApprovalAction(id){
+  openCustomConfirm("결재 철회", "해당 기안을 철회하시겠습니까?", function(){
+    var d = CACHE.approval.find(function(x){return x.id === id;});
+    if(d) d.status = '철회';
+    FB.patch('approvals/'+id, {status: '철회'});
+    closeModal('approval-detail-modal');
+    showToast("철회 완료");
+    updateBadges();
+    renderApproval();
+  });
+}
+
+// 3. 결재 1차/최종 승인 처리
+function actionApproval(id, nextStatus){
+  openCustomConfirm("결재 승인", nextStatus + " 처리하시겠습니까?", function(){
+    var d = CACHE.approval.find(function(x){return x.id === id;});
+    if(!d) return;
+    
+    var updateObj = { status: nextStatus };
+    if(nextStatus === '1차 승인') updateObj.approved1At = nowFmt();
+    if(nextStatus === '최종 승인') updateObj.approved2At = nowFmt();
+    
+    d.status = nextStatus;
+    Object.assign(d, updateObj);
+    
+    FB.patch('approvals/'+id, updateObj);
+    closeModal('approval-detail-modal');
+    showToast(nextStatus + " 완료");
+    updateBadges();
+    renderApproval();
+  });
+}
+
+// 4. 결재/휴가 반려 처리
+function openRejectModal(id, type){
+  var reason = prompt("반려 사유를 입력해주세요:");
+  if(reason === null) return; // 취소 누름
+  
+  var path = type === 'approval' ? 'approvals/' : 'leaves/';
+  var cacheList = type === 'approval' ? CACHE.approval : CACHE.leaves;
+  var modalId = type === 'approval' ? 'approval-detail-modal' : 'leave-detail-modal';
+  
+  var d = cacheList.find(function(x){return x.id === id;});
+  if(d){
+     d.status = '반려';
+     d.rejectReason = reason;
+  }
+  
+  FB.patch(path + id, {status: '반려', rejectReason: reason});
+  closeModal(modalId);
+  showToast("반려 처리되었습니다.");
+  updateBadges();
+  
+  if(type === 'approval') renderApproval();
+  else renderLeaves();
 }
