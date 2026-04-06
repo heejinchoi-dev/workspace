@@ -22,6 +22,9 @@ function getTeamLeader(dept){var l=CACHE.members.find(function(m){return m.dept=
 function getMemberPosition(m){if(m.position==='팀장'||m.role==='팀장')return'팀장';if(m.role==='센터장')return'센터장';if(m.role==='ADMIN')return'관리자';return m.position||m.role||'팀원';}
 function isApprover(m){return m.role==='ADMIN'||m.role==='팀장'||m.role==='센터장'||m.position==='팀장';}
 function openCustomConfirm(t,d,cb){document.getElementById('cc-title').innerText=t;document.getElementById('cc-desc').innerText=d;confirmCb=cb;document.getElementById('cc-ok').onclick=function(){if(confirmCb){confirmCb();closeModal('custom-confirm-modal');}};openModal('custom-confirm-modal');}
+function canDelete() {
+  return USER.role === 'ADMIN' || USER.role === '팀장' || USER.role === '센터장' || USER.position === '팀장';
+}
 
 /*═══════════ Assignee Picker (드롭다운 + 검색) ═══════════*/
 function populateAssignees(cId,sel){
@@ -120,18 +123,34 @@ function initApp(){
   next();
 }
 
+// 기존 processData 함수를 아래로 덮어쓰세요.
 function processData(results){
   var now=Date.now();
-  CACHE.tasks=parseNode(results.tasks).filter(function(t){return!(t.status==='Done'&&(now-(parseInt(t.timestamp)||now))>30*86400000);});
-  CACHE.devProjects=parseNode(results.devProjects);CACHE.sprints=parseNode(results.sprints);CACHE.crm=parseNode(results.crm);CACHE.cs=parseNode(results.cs);CACHE.schedules=parseNode(results.schedules);CACHE.approval=parseNode(results.approvals);CACHE.leaves=parseNode(results.leaves);CACHE.comments=results.comments||{};CACHE.wiki=parseNode(results.wiki);
-  CACHE.quickLinks = parseNode(results.quickLinks); // 퀵링크 캐시 등록!
+  // isDeleted가 true인 항목들은 화면에 보이지 않도록 필터링합니다.
+  CACHE.tasks=parseNode(results.tasks).filter(function(t){return !t.isDeleted && !(t.status==='Done'&&(now-(parseInt(t.timestamp)||now))>30*86400000);});
+  CACHE.devProjects=parseNode(results.devProjects).filter(function(p){return !p.isDeleted;});
+  CACHE.sprints=parseNode(results.sprints).filter(function(s){return !s.isDeleted;});
+  CACHE.crm=parseNode(results.crm).filter(function(c){return !c.isDeleted;});
+  CACHE.cs=parseNode(results.cs).filter(function(c){return !c.isDeleted;});
+  CACHE.schedules=parseNode(results.schedules).filter(function(s){return !s.isDeleted;});
+  CACHE.approval=parseNode(results.approvals).filter(function(a){return !a.isDeleted;});
+  CACHE.leaves=parseNode(results.leaves).filter(function(l){return !l.isDeleted;});
+  CACHE.wiki=parseNode(results.wiki).filter(function(w){return !w.isDeleted;});
+  CACHE.quickLinks = parseNode(results.quickLinks); 
+  CACHE.comments=results.comments||{};
   
-  CACHE.vault=parseNode(results.vault).filter(function(v){if(USER.role==='ADMIN'||v.creator===USER.email||v.visibility==='ALL')return true;if(v.visibility==='PRIVATE')return false;return(v.visibility||'').indexOf(USER.dept)>-1||(v.visibility||'').indexOf(USER.email)>-1;}).map(function(v){return Object.assign({},v,{password:'••••••••'});});
+  CACHE.vault=parseNode(results.vault).filter(function(v){
+    if(v.isDeleted) return false;
+    if(USER.role==='ADMIN'||v.creator===USER.email||v.visibility==='ALL')return true;
+    if(v.visibility==='PRIVATE')return false;
+    return(v.visibility||'').indexOf(USER.dept)>-1||(v.visibility||'').indexOf(USER.email)>-1;
+  }).map(function(v){return Object.assign({},v,{password:'••••••••'});});
+  
   var used=0;CACHE.leaves.filter(function(l){return l.applicant&&l.applicant.toLowerCase()===USER.email&&l.status==='승인';}).forEach(function(l){if(l.type==='연차')used+=1;else if(l.type==='반차')used+=0.5;});
   CACHE.leaveInfo={total:USER.leaveTotal,used:used,remain:USER.leaveTotal-used};
   var notices=parseNode(results.notices);if(notices.length>0){var latest=notices[notices.length-1];if(latest&&latest.content){activeNoticeId=latest.id;showNoticePopup(latest.content);}}
   updateBadges();initConfirmModal();showTab('home');showToast('✅ 로드 완료!');
-  if(typeof setupRealtimeListeners === 'function') setupRealtimeListeners(); // 실시간 알림 켜기
+  if(typeof setupRealtimeListeners === 'function') setupRealtimeListeners(); 
 }
 
 // ═══════════════════════════════════════════════
@@ -396,7 +415,15 @@ function openScheduleModal(data){
   openModal('schedule-modal');
 }
 function submitSchedule(){var id=document.getElementById('sch-edit-id').value;var title=document.getElementById('sch-title').value.trim();if(!title)return showToast("제목을 입력하세요.");var obj={title:title,start:document.getElementById('sch-start').value,end:document.getElementById('sch-end').value||document.getElementById('sch-start').value,type:document.getElementById('sch-type').value,note:document.getElementById('sch-note').value,creator:USER.email};if(id){obj.id=id;var idx=CACHE.schedules.findIndex(function(x){return x.id===id;});if(idx>-1)Object.assign(CACHE.schedules[idx],obj);FB.patch('schedules/'+id,obj);}else{obj.id=genId();CACHE.schedules.push(obj);FB.set('schedules/'+obj.id,obj);}closeModal('schedule-modal');showToast(id?"일정 수정 완료":"일정 등록 완료");}
-function deleteScheduleAction(id){openCustomConfirm("일정 삭제","이 일정을 삭제할까요?",function(){CACHE.schedules=CACHE.schedules.filter(function(x){return x.id!==id;});FB.remove('schedules/'+id);closeModal('schedule-modal');showToast("삭제 완료");});}
+// 1. 일정 삭제 변경
+function deleteScheduleAction(id){
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
+  openCustomConfirm("일정 삭제","이 일정을 삭제할까요?",function(){
+    CACHE.schedules=CACHE.schedules.filter(function(x){return x.id!==id;});
+    FB.patch('schedules/'+id, { isDeleted: true, deletedAt: nowFmt(), deletedBy: USER.name });
+    closeModal('schedule-modal');showToast("삭제 완료 (숨김 처리됨)");
+  });
+}
 
 function initDevTab(){
   var el=document.getElementById('tab-dev');if(el.querySelector('#dev-board-view'))return;
@@ -502,7 +529,16 @@ function deleteDevProjectTask(id, idx){
   FB.patch('devProjects/'+id, {tasks:d.tasks});
   renderDevProjectTasks(id);
 }
-function confirmDeleteDev2(id){openCustomConfirm("프로젝트 삭제","정말 삭제하시겠습니까?",function(){CACHE.devProjects=CACHE.devProjects.filter(function(x){return x.id!==id;});closeModal('dev-detail-modal');renderDevProjects();FB.remove('devProjects/'+id);showToast("삭제 완료");});}
+// 2. 개발 프로젝트 삭제 변경
+function confirmDeleteDev2(id){
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
+  openCustomConfirm("프로젝트 삭제","정말 삭제하시겠습니까?",function(){
+    CACHE.devProjects=CACHE.devProjects.filter(function(x){return x.id!==id;});
+    closeModal('dev-detail-modal');renderDevProjects();
+    FB.patch('devProjects/'+id, { isDeleted: true, deletedAt: nowFmt(), deletedBy: USER.name });
+    showToast("삭제 완료 (숨김 처리됨)");
+  });
+}
 
 function openDevModal(data){
   // 생성 시에는 진행률 숨김, 수정 시에만 보이게 처리
@@ -585,7 +621,16 @@ function submitCRMComment(id){
   var c={targetId:id,email:USER.email,authorName:USER.name,content:msg,date:nowFmt()};
   CACHE.comments[cId]=c;FB.set('comments/'+cId,c);openCRMDetail(id);
 }
-function confirmDeleteCRM(id){openCustomConfirm("고객사 삭제","정말 삭제하시겠습니까?",function(){CACHE.crm=CACHE.crm.filter(function(x){return x.id!==id;});closeModal('crm-detail-modal');filterCRM();FB.remove('crm/'+id);showToast("삭제 완료");});}
+// 3. CRM 삭제 변경
+function confirmDeleteCRM(id){
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
+  openCustomConfirm("고객사 삭제","정말 삭제하시겠습니까?",function(){
+    CACHE.crm=CACHE.crm.filter(function(x){return x.id!==id;});
+    closeModal('crm-detail-modal');filterCRM();
+    FB.patch('crm/'+id, { isDeleted: true, deletedAt: nowFmt(), deletedBy: USER.name });
+    showToast("삭제 완료 (숨김 처리됨)");
+  });
+}
 // ▲ 여기까지 복사 ▲
 
 /*═══════════ CS ═══════════*/
@@ -676,13 +721,14 @@ function markCSDone(id){
   });
 }
 
+// 4. CS 티켓 삭제 변경
 function confirmDeleteCS(id){
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
   openCustomConfirm("CS 삭제","정말 삭제하시겠습니까?",function(){
     CACHE.cs=CACHE.cs.filter(function(x){return x.id!==id;});
-    closeModal('cs-detail-modal');
-    filterCS();
-    FB.remove('cs/'+id);
-    showToast("삭제 완료");
+    closeModal('cs-detail-modal');filterCS();
+    FB.patch('cs/'+id, { isDeleted: true, deletedAt: nowFmt(), deletedBy: USER.name });
+    showToast("삭제 완료 (숨김 처리됨)");
   });
 }
 // ═══════════════════════════════════════════════
@@ -879,7 +925,16 @@ function submitVault(){
     closeModal('vault-modal');showToast("등록 완료");renderVault();FB.set('vault/'+newId,obj);
   }
 }
-function confirmDeleteVault(id){openCustomConfirm("계정 삭제","삭제할까요?",function(){CACHE.vault=CACHE.vault.filter(function(x){return x.id!==id;});showToast("삭제됨");renderVault();FB.remove('vault/'+id);});}
+// 5. 보안 금고 삭제 변경
+function confirmDeleteVault(id){
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
+  openCustomConfirm("계정 삭제","삭제할까요?",function(){
+    CACHE.vault=CACHE.vault.filter(function(x){return x.id!==id;});
+    FB.patch('vault/'+id, { isDeleted: true, deletedAt: nowFmt(), deletedBy: USER.name });
+    showToast("삭제됨");renderVault();
+  });
+}
+
 
 /*═══════════ 위키 (Quill 에디터 적용) ═══════════*/
 var quillEditor = null;
@@ -923,7 +978,15 @@ function openWikiDetail(id){
   openModal('wiki-detail-modal');
 }
 
-function confirmDeleteWiki(id){openCustomConfirm("문서 삭제","삭제하시겠습니까?",function(){CACHE.wiki=CACHE.wiki.filter(function(x){return x.id!==id;});closeModal('wiki-detail-modal');showToast("삭제 완료");filterWikiUI();FB.remove('wiki/'+id);});}
+// 6. 위키 삭제 변경
+function confirmDeleteWiki(id){
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
+  openCustomConfirm("문서 삭제","삭제하시겠습니까?",function(){
+    CACHE.wiki=CACHE.wiki.filter(function(x){return x.id!==id;});
+    closeModal('wiki-detail-modal');showToast("삭제 완료");filterWikiUI();
+    FB.patch('wiki/'+id, { isDeleted: true, deletedAt: nowFmt(), deletedBy: USER.name });
+  });
+}
 
 function openWikiEditModal(id){
   var w=CACHE.wiki.find(function(x){return String(x.id)===String(id);});if(!w)return;
@@ -1035,12 +1098,13 @@ function filterDirectoryUI(){
 // ═══════════════════════════════════════════════
 //  관리자 (멤버 position 관리 추가)
 // ═══════════════════════════════════════════════
+// 기존 renderAdmin 내부 HTML에 '삭제된 기록 다운로드' 버튼을 추가합니다.
 function renderAdmin(){
   var el=document.getElementById('tab-admin');
   el.innerHTML='<h1 class="text-2xl md:text-3xl font-black text-red-600 mb-8"><i class="ri-settings-3-fill mr-2"></i> 관리자 설정</h1>'+
   '<div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">'+
   '<div class="bg-white border-2 border-red-50 p-8 md:p-10 r35 card-shadow"><h2 class="text-xl font-bold text-red-600 mb-5"><i class="ri-megaphone-fill"></i> 팝업 공지</h2><textarea id="admin-notice-content" rows="4" placeholder="공지 내용" class="w-full border p-4 r24 mb-4 outline-none text-sm bg-gray-50"></textarea><button onclick="submitNoticeAdmin()" class="bg-red-600 text-white px-6 py-3 r35 font-bold w-full shadow-lg">전사 팝업 띄우기</button></div>'+
-  '<div class="bg-white border p-8 md:p-10 r35 card-shadow"><h2 class="text-xl font-bold text-gray-800 mb-5"><i class="ri-database-2-fill text-blue-600"></i> 데이터 다운로드</h2><select id="admin-export-month" class="w-full border p-4 r24 mb-4 outline-none text-sm font-bold bg-gray-50"></select><div class="flex gap-3"><button onclick="downloadCSVAdmin(\'Approval\')" class="flex-1 bg-gray-800 text-white py-3 r35 text-sm font-bold shadow-md">지출내역</button><button onclick="downloadCSVAdmin(\'Leaves\')" class="flex-1 bg-gray-800 text-white py-3 r35 text-sm font-bold shadow-md">휴가내역</button></div></div>'+
+  '<div class="bg-white border p-8 md:p-10 r35 card-shadow"><h2 class="text-xl font-bold text-gray-800 mb-5"><i class="ri-database-2-fill text-blue-600"></i> 데이터 다운로드</h2><select id="admin-export-month" class="w-full border p-4 r24 mb-4 outline-none text-sm font-bold bg-gray-50"></select><div class="flex gap-3 mb-3"><button onclick="downloadCSVAdmin(\'Approval\')" class="flex-1 bg-gray-800 text-white py-3 r35 text-sm font-bold shadow-md">지출내역</button><button onclick="downloadCSVAdmin(\'Leaves\')" class="flex-1 bg-gray-800 text-white py-3 r35 text-sm font-bold shadow-md">휴가내역</button></div><button onclick="downloadDeletedData()" class="w-full bg-red-100 text-red-700 hover:bg-red-200 transition py-3 r35 text-sm font-bold shadow-sm"><i class="ri-delete-bin-fill mr-1"></i> 삭제된 전체 기록 다운로드</button></div>'+
   '</div>'+
   '<div class="bg-white border p-8 md:p-10 r35 card-shadow"><h2 class="text-xl font-bold text-gray-800 mb-5"><i class="ri-user-settings-fill text-teal-600"></i> 멤버 직급 관리 (팀장/팀원)</h2><p class="text-xs text-gray-500 mb-4">팀장으로 지정된 멤버는 해당 팀의 1차 결재권자로 자동 설정됩니다.</p><div id="admin-member-list" class="space-y-3 max-h-[400px] overflow-y-auto hide-scrollbar"></div></div>';
   initMonthFilters();
@@ -1062,6 +1126,40 @@ function updateMemberPosition(id,position){
 }
 function submitNoticeAdmin(){var c=document.getElementById('admin-notice-content').value;if(!c)return showToast("내용 입력");var id=genId();FB.set('notices/'+id,{id:id,content:c,createdAt:Date.now(),createdBy:USER.email});showToast("공지 등록 완료!");}
 function downloadCSVAdmin(type){var month=document.getElementById('admin-export-month')?document.getElementById('admin-export-month').value:'all';var csv='\uFEFF';if(type==='Approval'){csv+="입금요청일,기안자,항목명,은행,계좌번호,금액,상태\n";CACHE.approval.filter(function(a){return matchMonth(a.dateCreated,month);}).forEach(function(a){csv+='"'+(a.date||'')+'","'+(a.drafterName||'')+'","'+(a.reason||'')+'","'+(a.bank||'')+'","'+(a.account||'')+'","'+(a.amount||0)+'","'+(a.status||'')+'"\n';});}else{csv+="신청자,시작일,종료일,구분,사유,상태\n";CACHE.leaves.filter(function(l){return matchMonth(l.startDate,month);}).forEach(function(l){csv+='"'+(l.applicantName||'')+'","'+(l.startDate||'')+'","'+(l.endDate||'')+'","'+(l.type||'')+'","'+(l.reason||'')+'","'+(l.status||'')+'"\n';});}var b=new Blob([csv],{type:'text/csv;charset=utf-8;'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=type+'_'+(month==='all'?'All':month)+'.csv';a.click();}
+// 삭제된 데이터 엑셀 추출 함수 (코드 맨 밑에 추가)
+function downloadDeletedData() {
+  var csv = '\uFEFF삭제모듈,데이터제목,삭제자,삭제일시\n';
+  var nodes = ['crm', 'devProjects', 'cs', 'vault', 'wiki', 'schedules'];
+  
+  showToast("데이터베이스에서 삭제 기록을 수집 중입니다...");
+  
+  var promises = nodes.map(function(node) {
+    return new Promise(function(resolve) {
+      db.ref(node).once('value', function(snap) {
+        var data = snap.val();
+        if(data) {
+          Object.keys(data).forEach(function(k) {
+            var item = data[k];
+            if(item.isDeleted) {
+               var title = item.company || item.title || item.customer || item.category || '이름없음';
+               csv += '"' + node + '","' + title + '","' + (item.deletedBy||'알수없음') + '","' + (item.deletedAt||'') + '"\n';
+            }
+          });
+        }
+        resolve();
+      });
+    });
+  });
+
+  Promise.all(promises).then(function() {
+    var b = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = '삭제된_기록_추출_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click();
+    showToast("다운로드 완료!");
+  });
+}
 
 /*═══════════ 글로벌 통합 검색 (Ctrl+K) ═══════════*/
 window.addEventListener('keydown', function(e){
