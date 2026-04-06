@@ -96,7 +96,8 @@ auth.onAuthStateChanged(function(firebaseUser){
       var memberList=members?Object.keys(members).map(function(k){return Object.assign({id:k},members[k]);}):[];
       var matched=memberList.find(function(m){return m.email&&m.email.toLowerCase()===firebaseUser.email.toLowerCase();});
       if(matched){
-        USER={email:firebaseUser.email,name:matched.name||firebaseUser.displayName||firebaseUser.email.split('@')[0],dept:matched.dept||'',role:matched.role||'MEMBER',position:matched.position||'팀원',leaveTotal:Number(matched.leaveTotal)||15,phone:matched.phone||''};
+        // 👇 이메일 대소문자 버그 해결: String(firebaseUser.email).toLowerCase() 로 수정됨
+        USER={email:String(firebaseUser.email).toLowerCase(),name:matched.name||firebaseUser.displayName||firebaseUser.email.split('@')[0],dept:matched.dept||'',role:matched.role||'MEMBER',position:matched.position||'팀원',leaveTotal:Number(matched.leaveTotal)||15,phone:matched.phone||''};
         CACHE.members=memberList;
         document.getElementById('login-screen').classList.add('hidden');
         var appEl=document.getElementById('app');appEl.classList.remove('hidden');appEl.classList.add('flex','flex-col');
@@ -205,6 +206,7 @@ function showNoticePopup(content){renderModalRoot('global-notice-modal','<div cl
 // ═══════════════════════════════════════════════
 //  대시보드
 // ═══════════════════════════════════════════════
+// 기존 renderDashboard() 함수 내부를 아래처럼 덮어씌워 주세요.
 function renderDashboard(){
   var li=CACHE.leaveInfo,today=new Date();today.setHours(0,0,0,0);
   var ac=CACHE.approval.filter(function(d){return((d.approver1||'').toLowerCase()===USER.email&&d.status==='대기')||((d.approver2||'').toLowerCase()===USER.email&&d.status==='1차 승인');}).length;
@@ -214,14 +216,16 @@ function renderDashboard(){
   var ongoing=CACHE.devProjects.filter(function(p){return p.status!=='배포완료'&&p.status!=='보류';});
   var d=new Date(),dateStr=d.getFullYear()+'년 '+(d.getMonth()+1)+'월 '+d.getDate()+'일 '+'일월화수목금토'[d.getDay()]+'요일';
   
-  // 사내 퀵링크 영역 생성
-// 사내 퀵링크 영역 생성 (수정완료)
+  // 사내 퀵링크 렌더링 및 추가 버튼
   var qlHtml = (CACHE.quickLinks||[]).map(function(q){
-    return '<a href="'+q.url+'" target="_blank" class="flex flex-col items-center justify-center p-4 bg-white border border-gray-100 hover:border-blue-300 r24 shadow-sm hover:shadow-md transition group"><i class="'+esc(q.icon||'ri-link')+' text-2xl text-blue-500 mb-2 group-hover:scale-110 transition"></i><span class="text-xs font-bold text-gray-700">'+esc(q.name)+'</span></a>';
+    return '<a href="'+q.url+'" target="_blank" class="flex flex-col items-center justify-center p-4 bg-white border border-gray-100 hover:border-blue-300 r24 shadow-sm hover:shadow-md transition group"><i class="'+esc(q.icon||'ri-link')+' text-2xl text-blue-500 mb-2 group-hover:scale-110 transition"></i><span class="text-xs font-bold text-gray-700 w-full text-center truncate">'+esc(q.name)+'</span></a>';
   }).join('');
+  qlHtml += '<div onclick="openQuickLinkModal()" class="flex flex-col items-center justify-center p-4 bg-gray-50 border border-dashed border-gray-300 hover:border-blue-300 hover:bg-blue-50 r24 cursor-pointer transition group"><i class="ri-add-line text-2xl text-gray-400 mb-2 group-hover:text-blue-500 transition"></i><span class="text-xs font-bold text-gray-500 group-hover:text-blue-600">추가하기</span></div>';
 
   document.getElementById('tab-home').innerHTML=
     '<div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-2"><h1 class="text-2xl md:text-4xl font-black text-gray-800 tracking-tight">좋은 하루입니다, '+esc(USER.name)+'님! 👋</h1><p class="text-sm text-gray-400 font-bold">'+dateStr+'</p></div>'+
+    '<h3 class="text-sm font-bold text-gray-800 mb-3"><i class="ri-links-fill text-blue-500"></i> 바로가기 링크</h3>'+
+    '<div class="grid grid-cols-3 md:grid-cols-6 gap-3 mb-8">' + qlHtml + '</div>' +
     '<div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">'+
     '<div class="p-6 md:p-8 bg-white r35 card-shadow card-hover cursor-pointer hover:border-purple-200 border border-transparent" onclick="showTab(\'leaves\')"><h3 class="text-xs font-bold text-gray-400 uppercase mb-3">남은 연차</h3><p class="text-3xl md:text-4xl font-black text-purple-600">'+li.remain+' 일</p></div>'+
     '<div class="p-6 md:p-8 bg-white r35 card-shadow card-hover cursor-pointer hover:border-green-200 border border-transparent" onclick="showTab(\'approval\')"><h3 class="text-xs font-bold text-gray-400 uppercase mb-3">대기 중 결재</h3><p class="text-3xl md:text-4xl font-black text-green-500">'+ac+'</p></div>'+
@@ -237,6 +241,23 @@ function renderDashboard(){
     '<div class="bg-white p-8 md:p-10 r35 card-shadow h-72 flex flex-col"><h3 class="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2"><i class="ri-macbook-fill text-blue-500"></i> 진행 중인 개발 프로젝트</h3><div class="flex-1 overflow-y-auto space-y-3 hide-scrollbar">'+(ongoing.length===0?'<p class="text-xs text-gray-400 font-bold text-center mt-4">진행 중인 프로젝트 없음</p>':ongoing.map(function(p){return'<div class="p-4 bg-gray-50 r24 border border-gray-100 hover:border-blue-200 cursor-pointer transition" onclick="showTab(\'dev\')"><div class="flex justify-between items-center mb-2"><span class="font-black text-gray-800 text-sm truncate">'+esc(p.title)+'</span><span class="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 r20 font-bold shrink-0">'+p.status+'</span></div><div class="progress-bar"><div class="progress-fill" style="width:'+(p.progress||0)+'%"></div></div><p class="text-[10px] text-gray-400 mt-1 font-bold text-right">'+(p.progress||0)+'%</p></div>';}).join(''))+'</div></div></div>';
   renderDashCharts();
   FB.get('notices',function(err,data){var notices=parseNode(data);var el=document.getElementById('dash-notice');if(el&&notices.length>0)el.innerText=notices[notices.length-1].content||'공지 없음';});
+}
+
+// 파일 맨 아래(아무 곳이나)에 퀵링크 추가 기능 함수를 덧붙여주세요.
+function openQuickLinkModal(){
+  renderModalRoot('ql-modal', '<div class="bg-white r35 modal-content max-w-sm p-8 shadow-2xl fade-in"><h2 class="text-xl font-black mb-4"><i class="ri-link"></i> 바로가기 추가</h2><input type="text" id="ql-name" placeholder="이름 (예: 구글 드라이브)" class="w-full border p-3 r20 mb-3 text-sm outline-none bg-gray-50"><input type="text" id="ql-url" placeholder="URL (https://...)" class="w-full border p-3 r20 mb-6 text-sm outline-none bg-gray-50"><div class="flex justify-end gap-2"><button onclick="closeModal(\'ql-modal\')" class="px-6 py-2 bg-gray-100 r20 text-sm font-bold">취소</button><button onclick="submitQuickLink()" class="px-6 py-2 bg-blue-600 text-white r20 text-sm font-bold shadow-lg">추가</button></div></div>');
+  openModal('ql-modal');
+}
+function submitQuickLink(){
+  var n=document.getElementById('ql-name').value, u=document.getElementById('ql-url').value;
+  if(!n||!u) return showToast('이름과 URL을 모두 입력해주세요.');
+  if(!u.startsWith('http')) u = 'https://' + u; // http 보정
+  var id=genId();
+  var obj={id:id, name:n, url:u, icon:'ri-external-link-line'};
+  if(!CACHE.quickLinks) CACHE.quickLinks=[];
+  CACHE.quickLinks.push(obj);
+  FB.set('quickLinks/'+id, obj);
+  closeModal('ql-modal'); renderDashboard(); showToast('링크 추가 완료!');
 }
 function renderDashCharts(){
   var crmC={'잠재고객':CACHE.crm.filter(function(c){return(c.status||'').indexOf('Lead')>-1;}).length,'미팅/연락':CACHE.crm.filter(function(c){return(c.status||'').indexOf('Contact')>-1;}).length,'제안/견적':CACHE.crm.filter(function(c){return(c.status||'').indexOf('Proposal')>-1;}).length,'계약성공':CACHE.crm.filter(function(c){return(c.status||'').indexOf('Won')>-1;}).length};
@@ -282,30 +303,34 @@ function renderTeamTodo(){
   var el=document.getElementById('team-todo-list');if(!el)return;
   var teamTasks=CACHE.tasks.filter(function(t){return t.taskType==='team';}).sort(function(a,b){return(b.timestamp||0)-(a.timestamp||0);});
   if(!teamTasks.length){el.innerHTML='<p class="text-xs text-gray-400 font-bold text-center py-4">등록된 업무가 없습니다.</p>';return;}
-  // 프로젝트별 그룹핑
+  
   var groups={};teamTasks.forEach(function(t){var pj=t.project||'미분류';if(!groups[pj])groups[pj]=[];groups[pj].push(t);});
   var html='';
+  
   Object.keys(groups).forEach(function(pj){
     var tasks=groups[pj];
-    var doneCount=tasks.filter(function(t){return t.status==='Done';}).length;
-    html+='<div class="mb-4"><div class="flex items-center gap-2 mb-2 px-1"><i class="ri-folder-3-fill text-rose-400 text-sm"></i><span class="text-xs font-black text-gray-600 uppercase tracking-wider">'+esc(pj)+'</span><span class="text-[10px] text-gray-400 font-bold ml-auto">'+doneCount+'/'+tasks.length+' 완료</span></div>';
-    tasks.forEach(function(t){
+    var activeTasks = tasks.filter(function(t){return t.status!=='Done';});
+    var doneTasks = tasks.filter(function(t){return t.status==='Done';});
+    
+    html+='<div class="mb-5"><div class="flex items-center gap-2 mb-2 px-1"><i class="ri-folder-3-fill text-rose-400 text-sm"></i><span class="text-xs font-black text-gray-600 uppercase tracking-wider">'+esc(pj)+'</span><span class="text-[10px] text-gray-400 font-bold ml-auto">'+doneTasks.length+'/'+tasks.length+' 완료</span></div>';
+    
+    // 1. 진행 중인 업무 렌더링 함수
+    function renderTaskHTML(t, isDone) {
       var assigneeNames=(t.assignees||'').split(',').filter(Boolean).map(function(e){return'<span class="mention-tag">@'+getMemberName(e.trim())+'</span>';}).join(' ');
       var isMyTask=(t.assignees||'').toLowerCase().indexOf(USER.email)>-1;
-      var subItems=t.checklist||[];
-      var subDone=subItems.filter(function(x){return x.done;}).length;
-      var hasChecklist=subItems.length>0;
-      html+='<div class="'+(isMyTask?'bg-blue-50 border border-blue-100':'bg-gray-50 border border-gray-100')+' r20 overflow-hidden mb-2 hover:shadow-sm transition">'+
-        '<div class="flex items-start gap-3 p-4 cursor-pointer" onclick="openTaskDetail(\''+t.id+'\')">'+
-        '<input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0 mt-0.5" '+(t.status==='Done'?'checked':'')+' onclick="event.stopPropagation();toggleTodo(\''+t.id+'\',this.checked)">'+
-        '<div class="flex-1 min-w-0">'+
-        '<p class="text-sm font-bold '+(t.status==='Done'?'line-through text-gray-400':'text-gray-800')+'">'+esc(t.title)+'</p>'+
-        '<div class="flex flex-wrap gap-1.5 mt-2">'+assigneeNames+(t.deadline?'<span class="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 r20 font-bold">'+t.deadline+'</span>':'')+(hasChecklist?'<span class="text-[10px] bg-violet-100 text-violet-600 px-2 py-0.5 r20 font-bold"><i class="ri-checkbox-line"></i> '+subDone+'/'+subItems.length+'</span>':'')+'</div>'+
-        '<p class="text-[10px] text-gray-400 mt-1">'+getMemberName(t.creator)+' · '+(t.timestamp?fmtDT(t.timestamp):'')+'</p>'+
-        '</div>'+
-        '<i class="ri-arrow-right-s-line text-gray-300 text-xl shrink-0 mt-1"></i>'+
-        '</div></div>';
-    });
+      var subItems=t.checklist||[]; var subDone=subItems.filter(function(x){return x.done;}).length;
+      return '<div class="'+(isDone?'opacity-60 bg-gray-100':'(isMyTask?\'bg-blue-50 border-blue-100\':\'bg-gray-50\')')+' border border-gray-100 r20 overflow-hidden mb-2 hover:shadow-sm transition"><div class="flex items-start gap-3 p-4 cursor-pointer" onclick="openTaskDetail(\''+t.id+'\')"><input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0 mt-0.5" '+(isDone?'checked':'')+' onclick="event.stopPropagation();toggleTodo(\''+t.id+'\',this.checked)"><div class="flex-1 min-w-0"><p class="text-sm font-bold '+(isDone?'line-through text-gray-400':'text-gray-800')+'">'+esc(t.title)+'</p><div class="flex flex-wrap gap-1.5 mt-2">'+assigneeNames+(t.deadline?'<span class="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 r20 font-bold">'+t.deadline+'</span>':'')+(subItems.length>0?'<span class="text-[10px] bg-violet-100 text-violet-600 px-2 py-0.5 r20 font-bold"><i class="ri-checkbox-line"></i> '+subDone+'/'+subItems.length+'</span>':'')+'</div></div><i class="ri-arrow-right-s-line text-gray-300 text-xl shrink-0 mt-1"></i></div></div>';
+    }
+
+    // 2. 진행 중 업무 출력
+    activeTasks.forEach(function(t){ html += renderTaskHTML(t, false); });
+
+    // 3. 완료된 업무는 '보관함(아코디언)' 형태로 묶기
+    if(doneTasks.length > 0) {
+      html += '<details class="mt-2 group"><summary class="text-xs font-bold text-gray-500 cursor-pointer list-none hover:text-gray-800 bg-gray-100 p-2 r20 inline-flex items-center gap-1 transition">✅ 완료된 업무 '+doneTasks.length+'건 보기 <i class="ri-arrow-down-s-line group-open:rotate-180 transition"></i></summary><div class="mt-2 pl-2 border-l-2 border-gray-200">';
+      doneTasks.forEach(function(t){ html += renderTaskHTML(t, true); });
+      html += '</div></details>';
+    }
     html+='</div>';
   });
   el.innerHTML=html;
@@ -946,7 +971,9 @@ function filterWikiUI(){var k=(document.getElementById('wiki-search-input')||{va
 function openWikiModal(){
   renderModalRoot('wiki-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black mb-6 text-gray-800">새 문서 작성</h2><input id="wiki-title" type="text" placeholder="문서 제목" class="w-full text-2xl font-black border-b-2 mb-6 p-3 outline-none text-gray-800"><div class="flex gap-3 mb-4"><button onclick="showWikiTextForm()" id="wiki-tab-text" class="px-4 py-2 r24 text-sm font-bold bg-gray-100 text-gray-800">에디터 작성</button><button onclick="showWikiPdfForm()" id="wiki-tab-pdf" class="px-4 py-2 r24 text-sm font-bold text-gray-400">PDF 파일 업로드</button></div><div id="wiki-text-form" class="mb-6"><div id="wiki-quill-container" style="height: 350px;" class="bg-gray-50 r24"></div></div><div id="wiki-pdf-form" class="hidden"><label class="flex flex-col items-center justify-center w-full h-40 upload-zone r24 bg-white mb-6"><i class="ri-file-pdf-2-fill text-5xl text-red-400 mb-2"></i><span class="text-sm font-bold text-gray-400" id="wiki-pdf-name">클릭하여 PDF 업로드</span><input type="file" accept=".pdf" class="hidden" id="wiki-pdf-input" onchange="handleWikiPdf(this)"></label></div><div class="flex justify-end gap-3"><button onclick="closeModal(\'wiki-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitWiki()" class="px-8 py-3.5 bg-gray-900 text-white r35 text-sm font-bold shadow-lg">게시</button></div></div>');
   openModal('wiki-modal');
-  quillEditor = new Quill('#wiki-quill-container', { theme: 'snow', placeholder: '내용을 입력하세요...' });
+setTimeout(function(){
+    quillEditor = new Quill('#wiki-quill-container', { theme: 'snow', placeholder: '내용을 입력하세요...' });
+  }, 100);
 }
 
 function showWikiTextForm(){document.getElementById('wiki-text-form').classList.remove('hidden');document.getElementById('wiki-pdf-form').classList.add('hidden');document.getElementById('wiki-tab-text').className='px-4 py-2 r24 text-sm font-bold bg-gray-100 text-gray-800';document.getElementById('wiki-tab-pdf').className='px-4 py-2 r24 text-sm font-bold text-gray-400';}
@@ -993,8 +1020,10 @@ function openWikiEditModal(id){
   closeModal('wiki-detail-modal');
   renderModalRoot('wiki-edit-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black mb-6 text-gray-800">문서 수정</h2><input id="wiki-edit-title" type="text" value="'+esc(w.title)+'" class="w-full text-2xl font-black border-b-2 mb-6 p-3 outline-none text-gray-800"><div id="wiki-edit-quill-container" style="height: 350px;" class="mb-6 bg-gray-50 r24"></div><input type="hidden" id="wiki-edit-id" value="'+w.id+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'wiki-edit-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitWikiEdit()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">저장</button></div></div>');
   openModal('wiki-edit-modal');
-  quillEditor = new Quill('#wiki-edit-quill-container', { theme: 'snow' });
-  if(w.isHtml) quillEditor.root.innerHTML = w.content; else quillEditor.setText(w.content);
+setTimeout(function(){
+    quillEditor = new Quill('#wiki-edit-quill-container', { theme: 'snow' });
+    if(w.isHtml) quillEditor.root.innerHTML = w.content; else quillEditor.setText(w.content);
+  }, 100);
 }
 
 function submitWikiEdit(){
