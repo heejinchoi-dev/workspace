@@ -8,9 +8,14 @@ var devView='board',confirmCb=null,chartCRM=null,chartTasks=null,activeNoticeId=
 /*═══════════ Util ═══════════*/
 function esc(s) {
   if (!s) return '';
-  let txt = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  // 멘션(@성명)을 찾아서 디자인 태그로 변환
-  return txt.replace(/@([가-힣a-zA-Z0-9]+)/g, '<span class="mention-tag">@$1</span>');
+  // 기본 보안 변환
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// 멘션 태그만 따로 처리하는 함수를 분리 (금고 충돌 방지)
+function renderMentionText(txt) {
+  if (!txt) return '';
+  return esc(txt).replace(/@([가-힣a-zA-Z0-9]+)/g, '<span class="mention-tag">@$1</span>');
 }
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5);}
 function nowFmt(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
@@ -267,7 +272,23 @@ function showTab(name){
   document.querySelectorAll('.sidebar-item').forEach(function(i){i.classList.remove('active');});
   var sec=document.getElementById('tab-'+name);if(!sec)return;sec.classList.remove('hidden');
   var nav=document.querySelector('[data-tab="'+name+'"]');if(nav)nav.classList.add('active');
-  var renders={home:renderDashboard,calendar:renderCalendar,dev:function(){setDevView(devView);},crm:filterCRM,cs:filterCS,approval:renderApproval,vault:renderVault,wiki:renderWiki,leaves:renderLeaves,directory:renderDirectory,admin:renderAdmin};
+
+  // 👇 여기에 teamcal: renderTeamCalendar 를 추가했습니다.
+  var renders={
+    home:renderDashboard,
+    calendar:renderCalendar,
+    teamcal:renderTeamCalendar, // 👈 쉼표(,) 잊지 마세요!
+    dev:function(){setDevView(devView);},
+    crm:filterCRM,
+    cs:filterCS,
+    approval:renderApproval,
+    vault:renderVault,
+    wiki:renderWiki,
+    leaves:renderLeaves,
+    directory:renderDirectory,
+    admin:renderAdmin
+  };
+  
   if(renders[name])renders[name]();
 }
 function updateBadges(){
@@ -441,30 +462,28 @@ function renderCalendar() {
   var el = document.getElementById('tab-calendar');
   el.innerHTML = `
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-      <h1 class="text-2xl font-black text-gray-800"><i class="ri-briefcase-fill text-blue-600 mr-2"></i> 전사 업무 트래킹</h1>
-      <button onclick="openTeamTaskModal()" class="bg-blue-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-blue-700">+ 새 팀 업무 등록</button>
+      <h1 class="text-2xl font-black text-gray-800"><i class="ri-briefcase-fill text-blue-600 mr-2"></i> 팀별 프로젝트 트래킹</h1>
+      <button onclick="openTeamTaskModal()" class="bg-blue-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">+ 새 업무 등록</button>
     </div>
     <div class="flex flex-col lg:flex-row gap-6 h-[calc(100vh-12rem)]">
       <div class="w-full lg:w-72 flex flex-col bg-white p-6 r35 card-shadow overflow-hidden">
-        <h2 class="font-bold text-gray-800 mb-4 flex items-center gap-2 text-sm"><i class="ri-user-heart-line text-pink-500"></i> 내 개인 할 일</h2>
+        <h2 class="font-bold text-gray-800 mb-4 flex items-center gap-2 text-sm"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
         <div class="flex gap-2 mb-4">
-          <input type="text" id="my-todo-input" placeholder="할 일..." class="flex-1 border p-2.5 r20 text-xs outline-none bg-gray-50" onkeypress="if(event.key==='Enter')addMyTodo()">
+          <input type="text" id="my-todo-input" placeholder="추가..." class="flex-1 border p-2.5 r20 text-xs outline-none bg-gray-50" onkeypress="if(event.key==='Enter')addMyTodo()">
           <button onclick="addMyTodo()" class="bg-pink-500 text-white w-9 h-9 r20 font-bold">+</button>
         </div>
         <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
       </div>
-      
       <div class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden">
         <div class="flex justify-between items-center mb-6">
-          <h2 class="font-black text-gray-800 text-lg"><i class="ri-team-fill text-blue-500 mr-2"></i> 팀별 진행 상황 (히스토리 공유)</h2>
+          <h2 class="font-black text-gray-800 text-lg"><i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황</h2>
           <span class="text-[10px] bg-emerald-50 text-emerald-600 px-3 py-1 r20 font-bold border border-emerald-100">전사 실시간 공유 중</span>
         </div>
         <div id="team-project-tracking-board" class="flex-1 overflow-y-auto space-y-8 pr-2 hide-scrollbar"></div>
       </div>
-    </div>
-  `;
+    </div>`;
   renderMyTodo();
-  renderTeamProjectBoard(); // 아래 정의된 함수 호출
+  renderTeamProjectBoard();
 }
 
 
@@ -523,53 +542,42 @@ function renderTeamTodo(){
 function renderTeamProjectBoard() {
   var el = document.getElementById('team-project-tracking-board');
   if(!el) return;
-
-  // 팀 업무만 필터링 (taskType === 'team')
   var teamTasks = CACHE.tasks.filter(t => t.taskType === 'team');
   var groups = {};
-  teamTasks.forEach(t => {
-    var p = t.project || '기타 업무';
-    if(!groups[p]) groups[p] = [];
-    groups[p].push(t);
-  });
+  teamTasks.forEach(t => { var p = t.project || '공통 업무'; if(!groups[p]) groups[p] = []; groups[p].push(t); });
 
   if(Object.keys(groups).length === 0) {
-    el.innerHTML = '<div class="text-center py-20 text-gray-300 font-bold">등록된 팀 프로젝트가 없습니다.</div>';
+    el.innerHTML = '<div class="text-center py-20 text-gray-300 font-bold">등록된 팀별 업무가 없습니다.</div>';
     return;
   }
 
   el.innerHTML = Object.keys(groups).map(pName => {
     var tasks = groups[pName].sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
     return `
-      <div class="bg-gray-50 r35 p-6 border border-gray-100">
-        <div class="flex items-center justify-between mb-4 px-2">
-          <h3 class="font-black text-gray-700 flex items-center gap-2"><i class="ri-folder-open-fill text-yellow-500"></i> ${esc(pName)}</h3>
-          <span class="text-[10px] text-gray-400 font-bold">${tasks.length}개의 업무</span>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="bg-gray-50/50 r35 p-6 border border-gray-100 mb-6">
+        <h3 class="font-black text-gray-700 text-base mb-4 pb-2 border-b"><i class="ri-folder-info-fill text-blue-400 mr-2"></i> ${esc(pName)}</h3>
+        <div class="space-y-3">
           ${tasks.map(t => {
             var cCount = Object.values(CACHE.comments).filter(c => c.targetId === t.id).length;
+            var doneCount = (t.checklist||[]).filter(x=>x.done).length;
+            var totalCount = (t.checklist||[]).length;
             return `
-              <div onclick="openTaskDetail('${t.id}')" class="bg-white p-4 r24 border border-gray-200 hover:border-blue-400 hover:shadow-md cursor-pointer transition group">
-                <div class="flex justify-between items-start mb-2">
-                  <p class="text-sm font-bold text-gray-800 group-hover:text-blue-600 transition truncate">${esc(t.title)}</p>
+              <div onclick="openTaskDetail('${t.id}')" class="bg-white p-5 r24 border border-gray-200 hover:border-blue-400 cursor-pointer transition group">
+                <div class="flex justify-between items-start mb-2 gap-4">
+                  <p class="text-sm font-bold text-gray-800 flex-1">${esc(t.title)}</p>
                   ${statusBadge(t.status === 'Done' ? '완료' : '진행중')}
                 </div>
-                <div class="flex justify-between items-center mt-3">
+                <div class="flex justify-between items-center mt-4">
                   <div class="flex items-center gap-2">
-                    <div class="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-[8px] font-black">${getMemberName(t.creator)[0]}</div>
                     <span class="text-[10px] text-gray-500 font-bold">${getMemberName(t.creator)}</span>
+                    ${totalCount > 0 ? `<span class="text-[9px] bg-violet-50 text-violet-600 px-2 py-0.5 r10 font-bold">체크리스트 ${doneCount}/${totalCount}</span>` : ''}
                   </div>
-                  <div class="flex items-center gap-2 text-gray-400">
-                    <i class="ri-chat-3-line text-sm"></i><span class="text-[10px] font-bold">${cCount}</span>
-                  </div>
+                  <div class="text-[10px] text-gray-400"><i class="ri-chat-3-line"></i> ${cCount} 팔로업</div>
                 </div>
-              </div>
-            `;
+              </div>`;
           }).join('')}
         </div>
-      </div>
-    `;
+      </div>`;
   }).join('');
 }
 
@@ -577,43 +585,82 @@ function renderTeamProjectBoard() {
 function openTaskDetail(id) {
   var t = CACHE.tasks.find(x => x.id === id);
   if(!t) return;
+  if(!t.checklist) t.checklist = [];
   var comments = Object.values(CACHE.comments).filter(c => c.targetId === id).sort((a,b) => new Date(a.date) - new Date(b.date));
 
   var html = `
     <div class="bg-white r35 modal-content max-w-5xl p-0 shadow-2xl relative fade-in flex flex-col md:flex-row overflow-hidden">
       <button onclick="closeModal('task-detail-modal')" class="absolute top-6 right-6 text-gray-400 hover:text-black z-10"><i class="ri-close-line text-3xl"></i></button>
-      <div class="flex-1 p-8 md:p-10 border-r border-gray-100">
-        <div class="flex items-center gap-2 mb-4"><span class="text-[10px] font-black px-2 py-1 r20 bg-blue-100 text-blue-700">${t.project}</span>${statusBadge(t.status === 'Done' ? '완료' : '진행중')}</div>
+      
+      <div class="flex-1 p-8 md:p-10 border-r border-gray-100 overflow-y-auto">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-[10px] font-black px-2 py-1 r20 bg-blue-100 text-blue-700">${t.project}</span>
+          ${statusBadge(t.status === 'Done' ? '전체완료' : '진행중')}
+        </div>
         <h2 class="text-2xl font-black text-gray-900 mb-6">${esc(t.title)}</h2>
-        <div class="bg-gray-50 p-6 r24 mb-6"><p class="text-xs font-black text-gray-400 mb-2">상세 업무 내역</p><p class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">${esc(t.content || '내용이 없습니다.')}</p></div>
-        <div class="flex justify-between items-center text-[11px] text-gray-400 font-bold"><span>작성: ${getMemberName(t.creator)}</span><span>기한: ${t.deadline || '없음'}</span></div>
-        <div class="flex gap-2 mt-10">
-          <button onclick="toggleTodo('${t.id}', ${t.status !== 'Done'})" class="flex-1 py-3.5 ${t.status === 'Done' ? 'bg-gray-200 text-gray-600' : 'bg-blue-600 text-white shadow-lg'} r24 font-bold text-sm transition">
-            ${t.status === 'Done' ? '다시 진행하기' : '업무 완료하기'}
-          </button>
-          <button onclick="confirmDeleteTask('${t.id}')" class="px-6 py-3.5 bg-red-50 text-red-500 r24 font-bold text-sm hover:bg-red-100 transition">삭제</button>
+        
+        <div class="mb-8">
+          <h3 class="text-sm font-black text-gray-800 mb-4 flex items-center gap-2"><i class="ri-checkbox-list-line text-blue-500"></i> 세부 실행 업무</h3>
+          <div id="task-checklist-area" class="space-y-2 mb-4">
+            ${t.checklist.map((item, idx) => `
+              <div class="flex items-center gap-3 p-3 ${item.done ? 'bg-gray-50' : 'bg-white border border-gray-100'} r20 group">
+                <input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer" ${item.done ? 'checked' : ''} 
+                       onchange="toggleSubTask('${t.id}', ${idx}, this.checked)">
+                <span class="flex-1 text-sm ${item.done ? 'line-through text-gray-400' : 'font-bold text-gray-700'}">${esc(item.text)}</span>
+                <span class="text-[9px] text-gray-300 font-bold">${item.completedBy ? getMemberName(item.completedBy) + ' 완료' : ''}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="flex gap-2">
+            <input type="text" id="new-subtask-in" placeholder="할 일 추가..." class="flex-1 border p-3 r20 text-xs outline-none bg-gray-50 focus:border-blue-400">
+            <button onclick="addSubTask('${t.id}')" class="bg-blue-600 text-white px-5 r20 font-bold text-sm">추가</button>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center text-[11px] text-gray-400 border-t pt-6">
+          <span>최초 등록: ${getMemberName(t.creator)}</span>
+          <button onclick="confirmDeleteTask('${t.id}')" class="text-red-400 hover:underline">업무 삭제</button>
         </div>
       </div>
+
       <div class="w-full md:w-[380px] bg-gray-50 p-8 flex flex-col h-[600px] md:h-auto">
-        <h3 class="font-black text-gray-800 mb-4 flex items-center gap-2"><i class="ri-chat-follow-up-fill text-blue-500"></i> 진행 팔로업</h3>
-        <div id="task-cmt-list" class="flex-1 overflow-y-auto space-y-3 hide-scrollbar mb-4">
-          ${comments.length ? comments.map(c => `
+        <h3 class="font-black text-gray-800 mb-4 flex items-center gap-2 text-sm"><i class="ri-chat-follow-up-fill text-blue-500"></i> 팔로업 기록</h3>
+        <div id="task-cmt-list" class="flex-1 overflow-y-auto space-y-3 mb-4 hide-scrollbar">
+          ${comments.map(c => `
             <div class="bg-white p-4 r20 shadow-sm border border-gray-100">
               <div class="flex justify-between items-center mb-1"><span class="font-black text-[10px] text-gray-800">${c.authorName}</span><span class="text-[9px] text-gray-400">${c.date}</span></div>
-              <p class="text-xs text-gray-600 leading-relaxed">${esc(c.content)}</p>
-            </div>`).join('') : '<p class="text-xs text-gray-400 text-center py-10">첫 번째 팔로업 의견을 남겨주세요.</p>'}
+              <p class="text-xs text-gray-600 leading-relaxed">${renderMentionText(c.content)}</p>
+            </div>`).join('')}
         </div>
         <div class="relative">
-          <textarea id="task-cmt-in" rows="2" placeholder="@이름 으로 멘션하여 알림 보내기..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-blue-400 shadow-sm bg-white"></textarea>
-          <button onclick="submitTaskComment('${t.id}')" class="absolute bottom-3 right-3 bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition"><i class="ri-send-plane-fill text-xs"></i></button>
+          <textarea id="task-cmt-in" rows="2" placeholder="@이름 호출..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-blue-400 shadow-sm bg-white"></textarea>
+          <button onclick="submitTaskComment('${t.id}')" class="absolute bottom-3 right-3 bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg"><i class="ri-send-plane-fill text-xs"></i></button>
         </div>
       </div>
     </div>
   `;
   renderModalRoot('task-detail-modal', html);
   openModal('task-detail-modal');
-  // 🌟 여기서 멘션 트리거를 실행합니다!
-  setTimeout(function(){ setupMention('task-cmt-in'); }, 200);
+  setTimeout(() => setupMention('task-cmt-in'), 200);
+}
+
+// 하위 업무 추가 함수
+function addSubTask(taskId) {
+  var inp = document.getElementById('new-subtask-in');
+  if(!inp.value.trim()) return;
+  var t = CACHE.tasks.find(x => x.id === taskId);
+  t.checklist.push({ text: inp.value.trim(), done: false, addedBy: USER.email });
+  FB.patch('tasks/' + taskId, { checklist: t.checklist });
+  inp.value = ''; openTaskDetail(taskId);
+}
+
+// 하위 업무 토글 함수
+function toggleSubTask(taskId, idx, done) {
+  var t = CACHE.tasks.find(x => x.id === taskId);
+  t.checklist[idx].done = done;
+  t.checklist[idx].completedBy = done ? USER.email : null;
+  FB.patch('tasks/' + taskId, { checklist: t.checklist });
+  setTimeout(() => openTaskDetail(taskId), 300);
 }
 
 function confirmDeleteTask(id){
@@ -1710,6 +1757,25 @@ function processAppr(id, action){
     updateBadges();
     renderApproval();
   });
+}
+
+function renderTeamCalendar() {
+  // 👇 ID를 'tab-directory'로 맞췄습니다. (index.html에 이 ID가 있어야 합니다)
+  var el = document.getElementById('tab-directory'); 
+  
+  if(!el) return; // 구역이 없으면 실행 안함
+
+  el.innerHTML = `
+    <div class="flex flex-col h-full" style="height: 80vh;">
+      <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-black text-gray-800"><i class="ri-google-fill text-blue-500 mr-2"></i> 전사 통합 캘린더</h1>
+        <a href="https://calendar.google.com" target="_blank" class="px-4 py-2 bg-white border r20 text-xs font-bold text-gray-600 shadow-sm hover:bg-gray-50 transition">Google 캘린더 앱에서 열기</a>
+      </div>
+      <div class="flex-1 bg-white r35 card-shadow overflow-hidden border border-gray-100">
+        <iframe src="https://calendar.google.com/calendar/embed?src=${encodeURIComponent(USER.email)}&ctz=Asia%2FSeoul" 
+                style="border: 0" width="100%" height="100%" frameborder="0" scrolling="no"></iframe>
+      </div>
+    </div>`;
 }
 
 // 끝
