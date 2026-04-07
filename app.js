@@ -79,59 +79,7 @@ function insertMention(elId, name, atPos) {
   el.value = val.substring(0, atPos) + '@' + name + ' ' + val.substring(el.selectionStart);
   hideMentionPopup(); el.focus();
 }
-function hideMentionPopup() { var pop = document.getElementById('mention-popup'); if(pop) pop.classList.add('hidden'); }
 
-// 2. 멘션 팝업 띄우기
-function showMentionPopup(el, query, atPos) {
-  var matched = CACHE.members.filter(m => m.name.toLowerCase().includes(query.toLowerCase()));
-  if (matched.length === 0) return hideMentionPopup();
-
-  var pop = document.getElementById('mention-popup');
-  if(!pop) {
-    pop = document.createElement('div');
-    pop.id = 'mention-popup';
-    pop.className = 'fixed bg-white border border-gray-200 shadow-2xl r20 w-48 z-[200] overflow-hidden overflow-y-auto max-h-48';
-    document.body.appendChild(pop);
-  }
-  
-  var rect = el.getBoundingClientRect();
-  // 입력창의 위치에 따라 팝업 위치 자동 조절
-  pop.style.left = rect.left + 'px';
-  pop.style.top = (window.scrollY + rect.top - pop.offsetHeight - 5) + 'px'; 
-  if(rect.top < 200) pop.style.top = (window.scrollY + rect.bottom + 5) + 'px';
-
-  pop.innerHTML = matched.map(m => `
-    <div onmousedown="insertMention('${el.id}', '${m.name}', ${atPos})" class="p-3 hover:bg-blue-50 cursor-pointer flex items-center gap-2 border-b last:border-0 border-gray-50">
-      <div class="w-6 h-6 rounded-full bg-blue-500 text-white text-[9px] flex items-center justify-center font-black">${m.name[0]}</div>
-      <div class="flex-1 min-w-0">
-        <p class="text-xs font-bold text-gray-800 truncate">${m.name}</p>
-        <p class="text-[9px] text-gray-400 uppercase">${m.dept}</p>
-      </div>
-    </div>
-  `).join('');
-  pop.classList.remove('hidden');
-}
-
-// 3. 선택한 이름 본문에 삽입
-function insertMention(elId, name, atPos) {
-  var el = document.getElementById(elId);
-  var val = el.value;
-  var before = val.substring(0, atPos);
-  var after = val.substring(el.selectionStart);
-  
-  el.value = before + '@' + name + ' ' + (after.startsWith(' ') ? after.substring(1) : after);
-  hideMentionPopup();
-  el.focus();
-  
-  // 커서를 이름 뒤로 이동
-  var newPos = atPos + name.length + 2;
-  el.setSelectionRange(newPos, newPos);
-}
-
-function hideMentionPopup() {
-  var pop = document.getElementById('mention-popup');
-  if(pop) pop.classList.add('hidden');
-}
 
 /*═══════════ Assignee Picker (드롭다운 + 검색) ═══════════*/
 function populateAssignees(cId,sel){
@@ -270,7 +218,9 @@ function showTab(name){
   if(sb)sb.classList.remove('open');if(ov)ov.classList.remove('show');
   document.querySelectorAll('[id^="tab-"]').forEach(function(s){s.classList.add('hidden');});
   document.querySelectorAll('.sidebar-item').forEach(function(i){i.classList.remove('active');});
-  var sec=document.getElementById('tab-'+name);if(!sec)return;sec.classList.remove('hidden');
+  var targetId = (name === 'teamcal') ? 'tab-directory' : 'tab-' + name;
+  var sec = document.getElementById(targetId);
+  if(sec) sec.classList.remove('hidden');
   var nav=document.querySelector('[data-tab="'+name+'"]');if(nav)nav.classList.add('active');
 
   // 👇 여기에 teamcal: renderTeamCalendar 를 추가했습니다.
@@ -443,14 +393,6 @@ function submitQuickLink(){
   CACHE.quickLinks.push(obj);
   FB.set('quickLinks/'+id, obj);
   closeModal('ql-modal'); renderDashboard(); showToast('링크 추가 완료!');
-}
-function renderDashCharts(){
-  var crmC={'잠재고객':CACHE.crm.filter(function(c){return(c.status||'').indexOf('Lead')>-1;}).length,'미팅/연락':CACHE.crm.filter(function(c){return(c.status||'').indexOf('Contact')>-1;}).length,'제안/견적':CACHE.crm.filter(function(c){return(c.status||'').indexOf('Proposal')>-1;}).length,'계약성공':CACHE.crm.filter(function(c){return(c.status||'').indexOf('Won')>-1;}).length};
-  var cCtx=document.getElementById('chart-crm');if(cCtx){if(chartCRM)chartCRM.destroy();chartCRM=new Chart(cCtx,{type:'doughnut',data:{labels:Object.keys(crmC),datasets:[{data:Object.values(crmC),backgroundColor:['#6b7280','#3b82f6','#8b5cf6','#10b981'],borderWidth:0}]},options:{cutout:'68%',plugins:{legend:{display:false}},animation:{duration:400}}});}
-  var leg=document.getElementById('chart-crm-legend');if(leg){var colors=['#6b7280','#3b82f6','#8b5cf6','#10b981'];var totalRev=CACHE.crm.filter(function(c){return c.status!=='계약성공(Won)';}).reduce(function(sum,c){return sum+(Number(c.expectedRevenue)||0);},0);var wonRev=CACHE.crm.filter(function(c){return c.status==='계약성공(Won)';}).reduce(function(sum,c){return sum+(Number(c.expectedRevenue)||0);},0);leg.innerHTML=Object.entries(crmC).map(function(e,i){return'<div class="flex justify-between text-xs"><span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full inline-block" style="background:'+colors[i]+'"></span><span class="text-gray-600 font-bold">'+e[0]+'</span></span><span class="font-black text-gray-800">'+e[1]+'건</span></div>';}).join('')+(totalRev||wonRev?'<div class="border-t mt-2 pt-2 text-xs">'+(totalRev?'<p class="text-gray-500">진행 중 예상: <b class="text-blue-600">₩'+totalRev.toLocaleString()+'</b></p>':'')+(wonRev?'<p class="text-gray-500">계약 확정: <b class="text-emerald-600">₩'+wonRev.toLocaleString()+'</b></p>':'')+'</div>':'');}
-  var mo=new Date().toISOString().slice(0,7);var mt=CACHE.tasks.filter(function(t){return(t.deadline||'').startsWith(mo);});var bS={Todo:mt.filter(function(t){return t.status==='Todo';}).length,'In Progress':mt.filter(function(t){return t.status==='In Progress';}).length,Done:mt.filter(function(t){return t.status==='Done';}).length};
-  var tCtx=document.getElementById('chart-tasks');if(tCtx){if(chartTasks)chartTasks.destroy();chartTasks=new Chart(tCtx,{type:'bar',data:{labels:Object.keys(bS),datasets:[{data:Object.values(bS),backgroundColor:['#e5e7eb','#3b82f6','#10b981'],borderRadius:8,borderWidth:0}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1},grid:{color:'#f3f4f6'}},x:{grid:{display:false}}},animation:{duration:400}}});}
-  var tleg=document.getElementById('chart-tasks-legend');if(tleg){var tot=Object.values(bS).reduce(function(a,b){return a+b;},0);tleg.innerHTML='<p class="text-xs text-gray-500 font-bold text-center">총 <b class="text-gray-800">'+tot+'건</b> · 완료율 <b class="text-green-600">'+(tot?Math.round(bS.Done/tot*100):0)+'%</b></p>';}
 }
 
 // ═══════════════════════════════════════════════
@@ -750,7 +692,7 @@ function submitTeamTask(){
   var assignees=getChecked('team-task-assignees'),deadline=document.getElementById('team-task-deadline').value;
   if(!assignees)return showToast("담당자를 지정하세요.");
   var id=genId();var obj={id:id,taskType:'team',project:project,category:'업무',title:title,assignees:assignees,priority:'Medium',deadline:deadline,content:'',status:'Todo',creator:USER.email,checklist:[],timestamp:Date.now()};
-  CCACHE.tasks.push(obj);closeModal('team-task-modal');renderTeamProjectBoard();showToast("업무 등록 완료!");FB.set('tasks/'+id,obj);
+  CACHE.tasks.push(obj);closeModal('team-task-modal');renderTeamProjectBoard();showToast("업무 등록 완료!");FB.set('tasks/'+id,obj);
 }
 
 // 일정 모달 (구글 연동 제거)
