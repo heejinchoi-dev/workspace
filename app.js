@@ -6,7 +6,12 @@ firebase.initializeApp(firebaseConfig);var auth=firebase.auth(),db=firebase.data
 var USER=null,CACHE={tasks:[],devProjects:[],sprints:[],crm:[],cs:[],schedules:[],approval:[],leaves:[],vault:[],comments:{},members:[],wiki:[],leaveInfo:{total:15,used:0,remain:15}};
 var devView='board',confirmCb=null,chartCRM=null,chartTasks=null,activeNoticeId=null;
 /*═══════════ Util ═══════════*/
-function esc(s){if(!s)return'';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function esc(s) {
+  if (!s) return '';
+  let txt = String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  // 멘션(@성명)을 찾아서 디자인 태그로 변환
+  return txt.replace(/@([가-힣a-zA-Z0-9]+)/g, '<span class="mention-tag">@$1</span>');
+}
 function genId(){return Date.now().toString(36)+Math.random().toString(36).substr(2,5);}
 function nowFmt(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
 function pad(n){return String(n).padStart(2,'0');}
@@ -127,7 +132,7 @@ function populateAssignees(cId,sel){
   var s=sel?sel.split(',').map(function(x){return x.trim().toLowerCase();}):[];
   var teams={};CACHE.members.forEach(function(m){var d=m.dept||'기타';if(!teams[d])teams[d]=[];teams[d].push(m);});
   
-  var html='<details class="w-full bg-white group"><summary class="p-4 border r24 text-sm font-bold cursor-pointer outline-none bg-gray-50 flex justify-between items-center list-none"><span id="'+cId+'-summary">참여인원 선택 ('+s.length+'명)</span><i class="ri-arrow-down-s-line group-open:rotate-180 transition text-gray-400 text-lg"></i></summary><div class="absolute left-0 right-0 top-full mt-2 border border-gray-200 r24 shadow-2xl max-h-60 overflow-y-auto bg-white z-50"><div class="p-2 bg-gray-50 border-b sticky top-0 z-10"><input type="text" class="w-full border p-2 text-xs outline-none r20 focus:border-blue-400" placeholder="이름 검색..." oninput="filterAssignees(\''+cId+'\',this.value)"></div><div class="p-2">';
+  var html='<details class="w-full bg-white group"><summary class="p-4 border r24 text-sm font-bold cursor-pointer outline-none bg-gray-50 flex justify-between items-center list-none"><span id="'+cId+'-summary">참여인원 선택 ('+s.length+'명)</span><i class="ri-arrow-down-s-line group-open:rotate-180 transition text-gray-400 text-lg"></i></summary><div class="absolute left-0 right-0 top-full mt-2 border border-gray-200 r24 shadow-2xl max-h-60 overflow-y-auto bg-white z-100"><div class="p-2 bg-gray-50 border-b sticky top-0 z-10"><input type="text" class="w-full border p-2 text-xs outline-none r20 focus:border-blue-400" placeholder="이름 검색..." oninput="filterAssignees(\''+cId+'\',this.value)"></div><div class="p-2">';
   
   Object.keys(teams).sort().forEach(function(dept){
     html+='<div class="ap-group" data-dept="'+esc(dept)+'"><div class="text-[10px] font-black text-gray-400 mt-2 mb-1 px-2 uppercase tracking-wider">'+esc(dept)+'</div>';
@@ -270,7 +275,8 @@ function updateBadges(){
   refreshNotifBadge();
 }
 function renderModalRoot(id,html){var el=document.getElementById(id);if(!el){el=document.createElement('div');el.id=id;document.getElementById('modal-root').appendChild(el);}el.className='hidden fixed inset-0 modal-overlay p-4 z-50';el.innerHTML=html;}
-function initConfirmModal(){renderModalRoot('custom-confirm-modal','<div class="bg-white r35 modal-content max-w-sm p-10 shadow-2xl fade-in text-center"><div class="text-red-500 text-6xl mb-6"><i class="ri-error-warning-fill"></i></div><h2 id="cc-title" class="text-2xl font-black mb-3 text-gray-800"></h2><p id="cc-desc" class="text-sm text-gray-500 mb-10 leading-relaxed"></p><div class="flex justify-center gap-3"><button onclick="closeModal(\'custom-confirm-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button id="cc-ok" class="px-8 py-3.5 bg-red-600 text-white r35 text-sm font-bold shadow-lg hover:bg-red-700 transition">확인</button></div></div>');}
+function initConfirmModal(){renderModalRoot('custom-confirm-modal','<div class="bg-white r35 modal-content max-w-sm p-10 shadow-2xl fade-in text-center"><div class="text-red-500 text-6xl mb-6"><i class="ri-error-warning-fill"></i></div><h2 id="cc-title" class="text-2xl font-black mb-3 text-gray-800"></h2><p id="cc-desc" class="text-sm text-gray-500 mb-10 leading-relaxed"></p><div class="flex justify-center gap-3"><button onclick="closeModal(\'custom-confirm-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button id="cc-ok" class="px-8 py-3.5 bg-red-600 text-white r35 text-sm font-bold shadow-lg hover:bg-red-700 transition">확인</button></div></div>');document.getElementById('custom-confirm-modal').className = 'hidden fixed inset-0 modal-overlay p-4 z-[100]';
+}
 
 // ═══════════════════════════════════════════════
 //  알림
@@ -427,37 +433,81 @@ function renderDashCharts(){
 // ═══════════════════════════════════════════════
 var calendar = null;
 
-function renderCalendar(){
-  var el=document.getElementById('tab-calendar');
-  el.innerHTML='<div class="flex flex-col lg:flex-row gap-6 h-full">'+
-    '<div class="w-full lg:w-80 flex flex-col gap-6">'+
-      '<div class="bg-white p-6 r35 card-shadow flex-1 overflow-y-auto">'+
-        '<h2 class="font-bold text-lg mb-4 flex items-center gap-2"><i class="ri-user-line text-blue-500"></i> 나의 할 일</h2>'+
-        '<div class="flex gap-2 mb-4"><input type="text" id="my-todo-input" placeholder="입력..." class="flex-1 border p-3 r24 text-sm outline-none bg-gray-50" onkeypress="if(event.key===\'Enter\')addMyTodo()"><button onclick="addMyTodo()" class="bg-blue-600 text-white w-10 h-10 r24 font-bold text-xl">+</button></div>'+
-        '<div id="my-todo-list" class="space-y-2"></div>'+
-      '</div>'+
-    '</div>'+
-    '<div class="flex-1 bg-white p-6 r35 card-shadow overflow-hidden">'+
-      '<div id="calendar-view-main" class="h-full"></div>'+
-    '</div>'+
-  '</div>';
+function renderCalendar() {
+  var container = document.getElementById('tab-calendar');
+  if (!container) return;
 
-  renderMyTodo();
+  // 1. 상단 컨트롤 바 (부서 필터 + 업무 추가 버튼)
+  container.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between mb-6 gap-4">
+      <div class="flex items-center gap-4">
+        <h2 class="text-2xl font-black text-gray-800">🗓️ 팀 전용 캘린더</h2>
+        <select id="cal-dept-filter" onchange="refreshCalendarEvents()" class="border-none bg-white px-4 py-2 r20 shadow-sm font-bold text-sm outline-none text-blue-600">
+          <option value="ALL">전체 부서 보기</option>
+          <option value="개발">개발팀</option>
+          <option value="디자인">디자인팀</option>
+          <option value="기획">기획팀</option>
+          <option value="영업">영업팀</option>
+        </select>
+      </div>
+      <button onclick="openTaskModal()" class="bg-blue-600 text-white px-6 py-3 r24 font-black shadow-lg hover:bg-blue-700 transition flex items-center gap-2">
+        <i class="ri-add-line"></i> 팀 업무 등록
+      </button>
+    </div>
+    <div id="calendar-main" class="bg-white p-6 r35 shadow-sm flex-1"></div>
+  `;
+
+  // 2. 풀캘린더 초기화
+  var calEl = document.getElementById('calendar-main');
+  calendarObj = new FullCalendar.Calendar(calEl, {
+    initialView: 'dayGridMonth',
+    locale: 'ko',
+    headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listWeek' },
+    events: getCalEvents(),
+    eventClick: function(info) {
+      var taskId = info.event.id;
+      if(taskId) openTaskDetail(taskId);
+    },
+    editable: true,
+    eventDrop: function(info) {
+      // 드래그로 날짜 변경 시 DB 업데이트
+      var newDate = info.event.startStr;
+      FB.patch('tasks/' + info.event.id, { deadline: newDate });
+      showToast("업무 기한이 변경되었습니다.");
+    }
+  });
+  calendarObj.render();
+}
+
+// 부서별 필터링 적용해서 이벤트 가져오기
+function getCalEvents() {
+  var dept = document.getElementById('cal-dept-filter') ? document.getElementById('cal-dept-filter').value : 'ALL';
   
-  // FullCalendar 초기화
-  setTimeout(function(){
-    var calendarEl = document.getElementById('calendar-view-main');
-    if(!calendarEl) return;
-    calendar = new FullCalendar.Calendar(calendarEl, {
-      initialView: 'dayGridMonth',
-      locale: 'ko',
-      headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listWeek' },
-      events: CACHE.schedules.map(s => ({ title: s.title, start: s.start, end: s.end, color: s.type === '팀 회의' ? '#3b82f6' : '#ec4899' })),
-      dateClick: function(info) { openScheduleModal({start: info.dateStr}); },
-      eventClick: function(info) { /* 일정 클릭 시 수정 로직 */ }
-    });
-    calendar.render();
-  }, 100);
+  return CACHE.tasks.filter(function(t) {
+    // 팀 업무(team)이면서 부서가 맞거나 전체보기일 때
+    if (dept === 'ALL') return t.taskType === 'team';
+    return t.taskType === 'team' && t.dept === dept;
+  }).map(function(t) {
+    return {
+      id: t.id,
+      title: '[' + (t.dept || '공통') + '] ' + t.title,
+      start: t.deadline || t.timestamp,
+      color: getDeptColor(t.dept),
+      allDay: true
+    };
+  });
+}
+
+function refreshCalendarEvents() {
+  if (calendarObj) {
+    calendarObj.removeAllEvents();
+    calendarObj.addEventSource(getCalEvents());
+  }
+}
+
+function getDeptColor(dept) {
+  var colors = { '개발': '#3b82f6', '디자인': '#ec4899', '기획': '#f59e0b', '영업': '#10b981' };
+  return colors[dept] || '#64748b';
 }
 
 // 나의 할 일 (나만 보임)
