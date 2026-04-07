@@ -467,110 +467,6 @@ function renderCalendar() {
   renderTeamProjectBoard(); // 아래 정의된 함수 호출
 }
 
-function renderTeamProjectBoard() {
-  var el = document.getElementById('team-project-tracking-board');
-  if(!el) return;
-
-  var teamTasks = CACHE.tasks.filter(t => t.taskType === 'team');
-  var groups = {};
-  teamTasks.forEach(t => {
-    var p = t.project || '공통 업무';
-    if(!groups[p]) groups[p] = [];
-    groups[p].push(t);
-  });
-
-  if(Object.keys(groups).length === 0) {
-    el.innerHTML = '<div class="text-center py-20 text-gray-300 font-bold text-sm">등록된 팀별 업무가 없습니다.</div>';
-    return;
-  }
-
-  el.innerHTML = Object.keys(groups).map(pName => {
-    var tasks = groups[pName].sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
-    return `
-      <div class="bg-gray-50/50 r35 p-6 border border-gray-100">
-        <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
-          <h3 class="font-black text-gray-700 text-base"><i class="ri-folder-info-fill text-blue-400 mr-2"></i> ${esc(pName)}</h3>
-          <span class="text-[10px] text-gray-400 font-bold">${tasks.length}개의 히스토리</span>
-        </div>
-        <div class="space-y-3">
-          ${tasks.map(t => {
-            var cCount = Object.values(CACHE.comments).filter(c => c.targetId === t.id).length;
-            return `
-              <div onclick="openTaskDetail('${t.id}')" class="bg-white p-5 r24 border border-gray-200 hover:border-blue-400 hover:shadow-md cursor-pointer transition group relative">
-                <div class="flex justify-between items-start mb-2 gap-4">
-                  <p class="text-sm font-bold text-gray-800 leading-snug group-hover:text-blue-600 transition flex-1">${esc(t.title)}</p>
-                  ${statusBadge(t.status === 'Done' ? '완료' : '진행중')}
-                </div>
-                <div class="flex justify-between items-center mt-4">
-                  <div class="flex items-center gap-2">
-                    <div class="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 text-[10px] font-black">${getMemberName(t.creator)[0]}</div>
-                    <span class="text-[11px] text-gray-500 font-bold">${getMemberName(t.creator)} <span class="text-gray-300 font-normal ml-2">${fmtDT(t.timestamp)}</span></span>
-                  </div>
-                  <div class="flex items-center gap-2 px-3 py-1 bg-gray-50 r20 border border-gray-100 text-gray-400 group-hover:text-blue-500 transition">
-                    <i class="ri-chat-history-line text-sm"></i><span class="text-[10px] font-black">${cCount} 히스토리</span>
-                  </div>
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-  // 2. 풀캘린더 초기화
-  var calEl = document.getElementById('calendar-main');
-  calendarObj = new FullCalendar.Calendar(calEl, {
-    initialView: 'dayGridMonth',
-    locale: 'ko',
-    headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listWeek' },
-    events: getCalEvents(),
-    eventClick: function(info) {
-      var taskId = info.event.id;
-      if(taskId) openTaskDetail(taskId);
-    },
-    editable: true,
-    eventDrop: function(info) {
-      // 드래그로 날짜 변경 시 DB 업데이트
-      var newDate = info.event.startStr;
-      FB.patch('tasks/' + info.event.id, { deadline: newDate });
-      showToast("업무 기한이 변경되었습니다.");
-    }
-  });
-  calendarObj.render();
-
-
-// 부서별 필터링 적용해서 이벤트 가져오기
-function getCalEvents() {
-  var dept = document.getElementById('cal-dept-filter') ? document.getElementById('cal-dept-filter').value : 'ALL';
-  
-  return CACHE.tasks.filter(function(t) {
-    // 팀 업무(team)이면서 부서가 맞거나 전체보기일 때
-    if (dept === 'ALL') return t.taskType === 'team';
-    return t.taskType === 'team' && t.dept === dept;
-  }).map(function(t) {
-    return {
-      id: t.id,
-      title: '[' + (t.dept || '공통') + '] ' + t.title,
-      start: t.deadline || t.timestamp,
-      color: getDeptColor(t.dept),
-      allDay: true
-    };
-  });
-}
-
-function refreshCalendarEvents() {
-  if (calendarObj) {
-    calendarObj.removeAllEvents();
-    calendarObj.addEventSource(getCalEvents());
-  }
-}
-
-function getDeptColor(dept) {
-  var colors = { '개발': '#3b82f6', '디자인': '#ec4899', '기획': '#f59e0b', '영업': '#10b981' };
-  return colors[dept] || '#64748b';
-}
 
 // 나의 할 일 (나만 보임)
 function renderMyTodo(){
@@ -625,7 +521,7 @@ function renderTeamTodo(){
 }
 
 function renderTeamProjectBoard() {
-  var el = document.getElementById('team-project-board');
+  var el = document.getElementById('team-project-tracking-board');
   if(!el) return;
 
   // 팀 업무만 필터링 (taskType === 'team')
@@ -720,6 +616,18 @@ function openTaskDetail(id) {
   setTimeout(function(){ setupMention('task-cmt-in'); }, 200);
 }
 
+function confirmDeleteTask(id){
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
+  openCustomConfirm("업무 삭제","이 업무를 삭제하시겠습니까?",function(){
+    CACHE.tasks=CACHE.tasks.filter(function(x){return x.id!==id;});
+    FB.patch('tasks/'+id, { isDeleted: true, deletedAt: nowFmt(), deletedBy: USER.name });
+    closeModal('task-detail-modal');
+    renderMyTodo();
+    renderTeamProjectBoard();
+    showToast("삭제 완료");
+  });
+}
+
 function submitTaskComment(id) {
   var inp = document.getElementById('task-cmt-in');
   if(!inp || !inp.value.trim()) return;
@@ -795,7 +703,7 @@ function submitTeamTask(){
   var assignees=getChecked('team-task-assignees'),deadline=document.getElementById('team-task-deadline').value;
   if(!assignees)return showToast("담당자를 지정하세요.");
   var id=genId();var obj={id:id,taskType:'team',project:project,category:'업무',title:title,assignees:assignees,priority:'Medium',deadline:deadline,content:'',status:'Todo',creator:USER.email,checklist:[],timestamp:Date.now()};
-  CACHE.tasks.push(obj);closeModal('team-task-modal');renderTeamTodo();showToast("업무 등록 완료!");FB.set('tasks/'+id,obj);
+  CCACHE.tasks.push(obj);closeModal('team-task-modal');renderTeamProjectBoard();showToast("업무 등록 완료!");FB.set('tasks/'+id,obj);
 }
 
 // 일정 모달 (구글 연동 제거)
@@ -1772,34 +1680,36 @@ function openRejectModal(id, type){
   updateBadges();
   type === 'approval' ? renderApproval() : renderLeaves();
 }
+function processAppr(id, action){
+  var d = CACHE.approval.find(function(x){return x.id===id;});
+  if(!d) return;
 
-function renderTeamCalendar() {
-  var el = document.getElementById('tab-dev'); // '개발' 탭 혹은 별도의 '팀캘린더' 탭 id로 지정
-  el.innerHTML = `
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-black text-gray-800"><i class="ri-calendar-check-fill text-pink-500 mr-2"></i> 전사 일정 캘린더</h1>
-      <div class="flex gap-2">
-        <span class="flex items-center gap-1.5 text-xs font-bold text-gray-400"><i class="ri-checkbox-blank-circle-fill text-blue-500"></i> 팀회의</span>
-        <span class="flex items-center gap-1.5 text-xs font-bold text-gray-400"><i class="ri-checkbox-blank-circle-fill text-pink-500"></i> 개인일정</span>
-      </div>
-    </div>
-    <div class="bg-white p-8 r35 card-shadow flex-1" style="min-height: 600px;">
-      <div id="full-calendar-main" class="h-full"></div>
-    </div>
-  `;
-  
-  setTimeout(function(){
-    var calEl = document.getElementById('full-calendar-main');
-    if(!calEl) return;
-    var calendar = new FullCalendar.Calendar(calEl, {
-      initialView: 'dayGridMonth',
-      locale: 'ko',
-      headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,listWeek' },
-      events: CACHE.schedules.map(s => ({ title: s.title, start: s.start, end: s.end, color: s.type === '팀 회의' ? '#3b82f6' : '#ec4899' })),
-      height: '100%',
-      dateClick: function(info) { openScheduleModal({start: info.dateStr}); }
-    });
-    calendar.render();
-  }, 100);
+  if(action === '반려'){
+    openRejectModal(id, 'approval');
+    closeModal('appr-detail-modal');
+    return;
+  }
+
+  // 승인 로직
+  var nextStatus = '';
+  if(d.status === '대기' && (d.approver1||'').toLowerCase() === USER.email.toLowerCase()){
+    nextStatus = d.approver2 ? '1차 승인' : '최종 승인';
+  } else if(d.status === '1차 승인' && (d.approver2||'').toLowerCase() === USER.email.toLowerCase()){
+    nextStatus = '최종 승인';
+  }
+  if(!nextStatus) return showToast("승인 권한이 없습니다.");
+
+  openCustomConfirm("결재 승인", nextStatus + " 처리하시겠습니까?", function(){
+    d.status = nextStatus;
+    var updateObj = { status: nextStatus };
+    if(nextStatus === '1차 승인') updateObj.approved1At = nowFmt();
+    if(nextStatus === '최종 승인') updateObj.approved2At = nowFmt();
+    FB.patch('approvals/'+id, updateObj);
+    closeModal('appr-detail-modal');
+    showToast(nextStatus + " 완료!");
+    updateBadges();
+    renderApproval();
+  });
 }
+
 // 끝
