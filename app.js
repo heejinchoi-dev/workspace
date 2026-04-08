@@ -395,65 +395,77 @@ var calendar = null;
 // ═══════════════════════════════════════════════
 //  일정 및 할 일 (모바일 대응 + 창 폭 조절 저장 기능)
 // ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════
+//  일정 및 할 일 (5:5 고정 비율 + 드래그 위치 변경)
+// ═══════════════════════════════════════════════
 function renderCalendar() {
   var el = document.getElementById('tab-calendar');
   if(!el) return;
 
-  var savedWidth = localStorage.getItem('calTodoWidth') || '350px';
   var isMobile = window.innerWidth < 1024;
+
+  // 🌟 flex-1을 주어 두 창이 정확히 5:5(1:1) 비율을 나눠 가지도록 설정
+  var myTodoHtml = `
+    <div data-id="col-my-todo" class="flex-1 bg-white p-6 r35 card-shadow flex flex-col overflow-hidden min-w-[300px]">
+      <div class="drag-handle flex justify-between items-center mb-4 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition" title="잡고 끌어서 이동">
+        <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm pointer-events-none"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
+        <i class="ri-drag-move-fill text-gray-300 text-lg pointer-events-none"></i>
+      </div>
+      <div class="flex gap-2 mb-4">
+        <input type="text" id="my-todo-input" placeholder="@이름 멘션 가능..." class="flex-1 border p-2.5 r20 text-xs outline-none bg-gray-50" onkeypress="if(event.key==='Enter')addMyTodo()">
+        <button onclick="addMyTodo()" class="bg-pink-500 text-white w-9 h-9 r20 font-bold">+</button>
+      </div>
+      <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
+    </div>
+  `;
+
+  var teamBoardHtml = `
+    <div data-id="col-team-board" class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden min-w-[300px]">
+      <div class="drag-handle flex justify-between items-center mb-6 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition" title="잡고 끌어서 이동">
+        <h2 class="font-black text-gray-800 text-lg flex items-center pointer-events-none"><i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황</h2>
+        <div class="flex items-center gap-3 pointer-events-none">
+          <span class="text-[10px] bg-emerald-50 text-emerald-600 px-3 py-1 r20 font-bold border border-emerald-100">실시간 공유 중</span>
+          <i class="ri-drag-move-fill text-gray-300 text-xl"></i>
+        </div>
+      </div>
+      <div id="team-project-tracking-board" class="flex-1 overflow-y-auto space-y-8 pr-2 hide-scrollbar"></div>
+    </div>
+  `;
+
+  // 브라우저 저장 위치(좌우 순서) 불러오기
+  var savedOrder = JSON.parse(localStorage.getItem('calLayoutOrder')) || ['col-my-todo', 'col-team-board'];
+  var blocks = { 'col-my-todo': myTodoHtml, 'col-team-board': teamBoardHtml };
+  
+  var orderedHtml = savedOrder.map(id => blocks[id] || '').join('');
+  Object.keys(blocks).forEach(id => { if(!savedOrder.includes(id)) orderedHtml += blocks[id]; });
 
   el.innerHTML = `
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
       <h1 class="text-2xl font-black text-gray-800"><i class="ri-briefcase-fill text-blue-600 mr-2"></i> 팀별 프로젝트 트래킹</h1>
-      <button onclick="openTeamTaskModal()" class="bg-blue-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-blue-700">+ 새 업무 등록</button>
+      <button onclick="openTeamTaskModal()" class="bg-blue-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">+ 새 업무 등록</button>
     </div>
     <div id="cal-drag-container" class="flex flex-col lg:flex-row gap-6 ${isMobile ? 'h-auto' : 'h-[calc(100vh-12rem)]'}">
-      
-      <div data-id="col-my-todo" class="bg-white p-6 r35 card-shadow flex flex-col overflow-hidden" 
-           style="width: ${isMobile ? '100%' : savedWidth}; min-width: 280px; max-width: 800px; resize: horizontal; overflow: auto;">
-        <div class="drag-handle flex justify-between items-center mb-4 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
-          <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
-          <i class="ri-drag-move-fill text-gray-300"></i>
-        </div>
-        <div class="flex gap-2 mb-4">
-          <input type="text" id="my-todo-input" placeholder="@이름 멘션 가능..." class="flex-1 border p-2.5 r20 text-xs outline-none bg-gray-50" onkeypress="if(event.key==='Enter')addMyTodo()">
-          <button onclick="addMyTodo()" class="bg-pink-500 text-white w-9 h-9 r20 font-bold">+</button>
-        </div>
-        <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
-      </div>
-
-      <div data-id="col-team-board" class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden min-w-[350px]">
-        <div class="drag-handle flex justify-between items-center mb-6 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
-          <h2 class="font-black text-gray-800 text-lg flex items-center"><i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황</h2>
-          <span class="text-[10px] bg-emerald-50 text-emerald-600 px-3 py-1 r20 font-bold border border-emerald-100">실시간 공유 중</span>
-        </div>
-        <div id="team-project-tracking-board" class="flex-1 overflow-y-auto space-y-8 pr-2 hide-scrollbar"></div>
-      </div>
-
-    </div>`;
+      ${orderedHtml}
+    </div>
+  `;
 
   renderMyTodo();
   renderTeamProjectBoard();
-  setupMention('my-todo-input'); // 🌟 입력창 멘션 활성화
-
-  // 사이즈 변경 시 너비 저장
-  var todoBox = document.querySelector('[data-id="col-my-todo"]');
-  if(todoBox) {
-    new ResizeObserver(entries => {
-      for (let entry of entries) {
-        localStorage.setItem('calTodoWidth', entry.contentRect.width + 'px');
-      }
-    }).observe(todoBox);
-  }
+  setupMention('my-todo-input');
 
   // 드래그 앤 드롭 활성화
-  new Sortable(document.getElementById('cal-drag-container'), {
-    handle: '.drag-handle', animation: 150,
-    onEnd: function(evt) {
-      var order = Array.from(evt.to.children).map(c => c.getAttribute('data-id'));
-      localStorage.setItem('calLayoutOrder', JSON.stringify(order));
+  setTimeout(function(){
+    var container = document.getElementById('cal-drag-container');
+    if(container && typeof Sortable !== 'undefined'){
+      new Sortable(container, {
+        handle: '.drag-handle', animation: 150,
+        onEnd: function(evt) {
+          var order = Array.from(evt.to.children).map(c => c.getAttribute('data-id'));
+          localStorage.setItem('calLayoutOrder', JSON.stringify(order));
+        }
+      });
     }
-  });
+  }, 100);
 }
 
 // 하위 업무 추가 함수
@@ -1040,9 +1052,18 @@ async function submitApprovalBulk(){
   var date=document.getElementById('appr-date')?document.getElementById('appr-date').value:'';
   if(!a1||!date){showToast("1차 결재권자와 입금일 필수");return;}
   var rows=document.querySelectorAll('.appr-item-row');if(!rows.length){showToast("최소 1항목 필요");return;}
-  
+  var valid=true;
+  rows.forEach(function(row){
+      var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;
+      var reason=rs==='기타'?rc:rs;
+      var bank=row.querySelector('.appr-bank').value,account=row.querySelector('.appr-account').value,amount=row.querySelector('.appr-amount').value;
+      if(!reason||!bank||!account||!amount){showToast("사유, 은행, 계좌, 금액은 필수입니다");valid=false;}
+  });
+  if(!valid) return;
+
+  var isUrgent=document.getElementById('appr-is-urgent').checked;
   var btn = document.getElementById('btn-submit-appr');
-  if(btn) { btn.disabled = true; btn.innerText = "⏳ 처리 중..."; }
+  if(btn) { btn.disabled = true; btn.innerText = "⏳ 파일 업로드 및 처리 중..."; }
 
   for(var i=0; i<rows.length; i++) {
     var row = rows[i];
@@ -1051,13 +1072,19 @@ async function submitApprovalBulk(){
     var fileInput=row.querySelector('.appr-file');
     var fileUrl = '';
 
-    if(fileInput && fileInput.files[0]) {
+    // 🌟 파일 업로드 로직 강화 (실패 시 에러창 띄움)
+    if(fileInput && fileInput.files && fileInput.files[0]) {
       try {
         var file = fileInput.files[0];
         var storageRef = firebase.storage().ref('receipts/' + Date.now() + '_' + file.name);
         await storageRef.put(file);
         fileUrl = await storageRef.getDownloadURL();
-      } catch(e) { console.log("파일 업로드 에러:", e); }
+      } catch(e) { 
+        console.error("스토리지 에러:", e); 
+        alert("파일 업로드 실패! Firebase Storage 규칙이 설정되었는지 확인해 주세요.");
+        if(btn) { btn.disabled = false; btn.innerText = "결재 올리기"; }
+        return; // 진행 중단
+      }
     }
 
     var id=genId();
@@ -1066,11 +1093,11 @@ async function submitApprovalBulk(){
       payMethod:row.querySelector('.appr-pay-method').value, payDetail:row.querySelector('.appr-pay-detail').value,
       bank:row.querySelector('.appr-bank').value, account:row.querySelector('.appr-account').value,
       amount:row.querySelector('.appr-amount').value, approver1:a1, approver2:a2||'',
-      date:date, isUrgent:document.getElementById('appr-is-urgent').checked,
+      date:date, isUrgent:isUrgent,
       drafter:USER.email, drafterName:USER.name, status:'대기', dateCreated:Date.now(), fileUrl: fileUrl
     };
     CACHE.approval.push(obj);
-    FB.set('approvals/'+id, obj); // 🌟 db.ref 대신 FB.set 사용으로 충돌 해결
+    FB.set('approvals/'+id, obj);
   }
   
   if(btn) { btn.disabled = false; btn.innerText = "결재 올리기"; }
