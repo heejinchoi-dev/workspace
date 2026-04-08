@@ -1733,4 +1733,200 @@ function renderTeamCalendar() {
     </div>`;
 }
 
+// ═══════════════════════════════════════════════
+// 누락된 업무(Task) 및 체크리스트 렌더링 함수 복구
+// ═══════════════════════════════════════════════
+
+// 나의 할 일 (나만 보임)
+function renderMyTodo(){
+  var el=document.getElementById('my-todo-list');if(!el)return;
+  var myTasks=CACHE.tasks.filter(function(t){return t.taskType==='personal'&&(t.creator||'').toLowerCase()===USER.email.toLowerCase();}).sort(function(a,b){return(a.status==='Done'?1:0)-(b.status==='Done'?1:0);});
+  el.innerHTML=myTasks.length===0?'<p class="text-xs text-gray-400 font-bold text-center py-4">할 일이 없습니다.</p>':myTasks.map(function(t){return'<div class="flex items-center gap-3 p-3 bg-gray-50 r20 group hover:bg-gray-100 transition"><input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0" '+(t.status==='Done'?'checked':'')+' onchange="toggleTodo(\''+t.id+'\',this.checked)"><span class="flex-1 text-sm font-bold '+(t.status==='Done'?'line-through text-gray-400':'text-gray-700')+'">'+esc(t.title)+'</span><button onclick="deleteTodo(\''+t.id+'\')" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition"><i class="ri-delete-bin-line"></i></button></div>';}).join('');
+}
+function addMyTodo(){
+  var input=document.getElementById('my-todo-input');var title=input?input.value.trim():'';if(!title)return;input.value='';
+  var id=genId();var obj={id:id,taskType:'personal',project:'일반',category:'할일',title:title,assignees:USER.email,priority:'Medium',deadline:'',content:'',status:'Todo',creator:USER.email,timestamp:Date.now()};
+  CACHE.tasks.push(obj);renderMyTodo();FB.set('tasks/'+id,obj);
+}
+function toggleTodo(id,done){var ns=done?'Done':'Todo';var t=CACHE.tasks.find(function(x){return x.id===id;});if(t)t.status=ns;renderMyTodo();FB.patch('tasks/'+id,{status:ns});}
+function deleteTodo(id){CACHE.tasks=CACHE.tasks.filter(function(x){return x.id!==id;});renderMyTodo();FB.remove('tasks/'+id);}
+
+function renderTeamProjectBoard() {
+  var el = document.getElementById('team-project-tracking-board');
+  if(!el) return;
+  var teamTasks = CACHE.tasks.filter(t => t.taskType === 'team');
+  var groups = {};
+  teamTasks.forEach(t => { var p = t.project || '공통 업무'; if(!groups[p]) groups[p] = []; groups[p].push(t); });
+
+  if(Object.keys(groups).length === 0) {
+    el.innerHTML = '<div class="text-center py-20 text-gray-300 font-bold">등록된 팀별 업무가 없습니다.</div>';
+    return;
+  }
+
+  el.innerHTML = Object.keys(groups).map(pName => {
+    var tasks = groups[pName].sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+    return `
+      <div class="bg-gray-50/50 r35 p-6 border border-gray-100 mb-6">
+        <h3 class="font-black text-gray-700 text-base mb-4 pb-2 border-b"><i class="ri-folder-info-fill text-blue-400 mr-2"></i> ${esc(pName)}</h3>
+        <div class="space-y-3">
+          ${tasks.map(t => {
+            var cCount = Object.values(CACHE.comments).filter(c => c.targetId === t.id).length;
+            var doneCount = (t.checklist||[]).filter(x=>x.done).length;
+            var totalCount = (t.checklist||[]).length;
+            return `
+              <div onclick="openTaskDetail('${t.id}')" class="bg-white p-5 r24 border border-gray-200 hover:border-blue-400 cursor-pointer transition group">
+                <div class="flex justify-between items-start mb-2 gap-4">
+                  <p class="text-sm font-bold text-gray-800 flex-1">${esc(t.title)}</p>
+                  ${statusBadge(t.status === 'Done' ? '완료' : '진행중')}
+                </div>
+                <div class="flex justify-between items-center mt-4">
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-gray-500 font-bold">${getMemberName(t.creator)}</span>
+                    ${totalCount > 0 ? `<span class="text-[9px] bg-violet-50 text-violet-600 px-2 py-0.5 r10 font-bold">체크리스트 ${doneCount}/${totalCount}</span>` : ''}
+                  </div>
+                  <div class="text-[10px] text-gray-400"><i class="ri-chat-3-line"></i> ${cCount} 팔로업</div>
+                </div>
+              </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openTaskDetail(id) {
+  var t = CACHE.tasks.find(x => x.id === id);
+  if(!t) return;
+  if(!t.checklist) t.checklist = [];
+  var comments = Object.values(CACHE.comments).filter(c => c.targetId === id).sort((a,b) => new Date(a.date) - new Date(b.date));
+
+  var html = `
+    <div class="bg-white r35 modal-content max-w-5xl p-0 shadow-2xl relative fade-in flex flex-col md:flex-row overflow-hidden">
+      <button onclick="closeModal('task-detail-modal')" class="absolute top-6 right-6 text-gray-400 hover:text-black z-10"><i class="ri-close-line text-3xl"></i></button>
+      
+      <div class="flex-1 p-8 md:p-10 border-r border-gray-100 overflow-y-auto">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-[10px] font-black px-2 py-1 r20 bg-blue-100 text-blue-700">${t.project}</span>
+          ${statusBadge(t.status === 'Done' ? '전체완료' : '진행중')}
+        </div>
+        <h2 class="text-2xl font-black text-gray-900 mb-6">${esc(t.title)}</h2>
+        
+        <div class="mb-8">
+          <h3 class="text-sm font-black text-gray-800 mb-4 flex items-center gap-2"><i class="ri-checkbox-list-line text-blue-500"></i> 세부 실행 업무</h3>
+          <div id="task-checklist-area" class="space-y-2 mb-4">
+            ${t.checklist.map((item, idx) => `
+              <div class="flex items-center gap-3 p-3 ${item.done ? 'bg-gray-50' : 'bg-white border border-gray-100'} r20 group">
+                <input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer" ${item.done ? 'checked' : ''} 
+                       onchange="toggleSubTask('${t.id}', ${idx}, this.checked)">
+                <span class="flex-1 text-sm ${item.done ? 'line-through text-gray-400' : 'font-bold text-gray-700'}">${renderMentionText(item.text)}</span>
+                <span class="text-[9px] text-gray-300 font-bold">${item.completedBy ? getMemberName(item.completedBy) + ' 완료' : ''}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="flex gap-2">
+            <input type="text" id="new-subtask-in" placeholder="@이름 할 일 추가..." class="flex-1 border p-3 r20 text-xs outline-none bg-gray-50 focus:border-blue-400" onkeypress="if(event.key==='Enter')addSubTask('${t.id}')">
+            <button onclick="addSubTask('${t.id}')" class="bg-blue-600 text-white px-5 r20 font-bold text-sm">추가</button>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center text-[11px] text-gray-400 border-t pt-6">
+          <span>최초 등록: ${getMemberName(t.creator)}</span>
+          <button onclick="confirmDeleteTask('${t.id}')" class="text-red-400 hover:underline">업무 삭제</button>
+        </div>
+      </div>
+
+      <div class="w-full md:w-[380px] bg-gray-50 p-8 flex flex-col h-[600px] md:h-auto">
+        <h3 class="font-black text-gray-800 mb-4 flex items-center gap-2 text-sm"><i class="ri-chat-follow-up-fill text-blue-500"></i> 팔로업 기록</h3>
+        <div id="task-cmt-list" class="flex-1 overflow-y-auto space-y-3 mb-4 hide-scrollbar">
+          ${comments.map(c => `
+            <div class="bg-white p-4 r20 shadow-sm border border-gray-100">
+              <div class="flex justify-between items-center mb-1"><span class="font-black text-[10px] text-gray-800">${c.authorName}</span><span class="text-[9px] text-gray-400">${c.date}</span></div>
+              <p class="text-xs text-gray-600 leading-relaxed">${renderMentionText(c.content)}</p>
+            </div>`).join('')}
+        </div>
+        <div class="relative">
+          <textarea id="task-cmt-in" rows="2" placeholder="@이름 호출..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-blue-400 shadow-sm bg-white"></textarea>
+          <button onclick="submitTaskComment('${t.id}')" class="absolute bottom-3 right-3 bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg"><i class="ri-send-plane-fill text-xs"></i></button>
+        </div>
+      </div>
+    </div>
+  `;
+  renderModalRoot('task-detail-modal', html);
+  openModal('task-detail-modal');
+  setTimeout(() => { 
+    setupMention('task-cmt-in'); 
+    setupMention('new-subtask-in'); 
+  }, 200);
+}
+
+function addSubTask(taskId) {
+  var inp = document.getElementById('new-subtask-in');
+  if(!inp.value.trim()) return;
+  var t = CACHE.tasks.find(x => x.id === taskId);
+  t.checklist.push({ text: inp.value.trim(), done: false, addedBy: USER.email });
+  FB.patch('tasks/' + taskId, { checklist: t.checklist });
+  inp.value = ''; openTaskDetail(taskId);
+  renderTeamProjectBoard();
+}
+
+function toggleSubTask(taskId, idx, done) {
+  var t = CACHE.tasks.find(x => x.id === taskId);
+  t.checklist[idx].done = done;
+  t.checklist[idx].completedBy = done ? USER.email : null;
+  FB.patch('tasks/' + taskId, { checklist: t.checklist });
+  setTimeout(() => { openTaskDetail(taskId); renderTeamProjectBoard(); }, 300);
+}
+
+function confirmDeleteTask(id){
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
+  openCustomConfirm("업무 삭제","이 업무를 삭제하시겠습니까?",function(){
+    CACHE.tasks=CACHE.tasks.filter(function(x){return x.id!==id;});
+    FB.patch('tasks/'+id, { isDeleted: true, deletedAt: nowFmt(), deletedBy: USER.name });
+    closeModal('task-detail-modal');
+    renderMyTodo();
+    renderTeamProjectBoard();
+    showToast("삭제 완료");
+  });
+}
+
+function submitTaskComment(id) {
+  var inp = document.getElementById('task-cmt-in');
+  if(!inp || !inp.value.trim()) return;
+  var cId = genId();
+  var c = {targetId: id, email: USER.email, authorName: USER.name, content: inp.value, date: nowFmt()};
+  CACHE.comments[cId] = c;
+  FB.set('comments/' + cId, c);
+  openTaskDetail(id); // 화면 갱신
+  renderTeamProjectBoard();
+  showToast("의견이 등록되었습니다.");
+}
+
+function openTeamTaskModal(){
+  var existingProjects={};CACHE.tasks.filter(function(t){return t.taskType==='team'&&t.project;}).forEach(function(t){existingProjects[t.project]=true;});
+  CACHE.devProjects.forEach(function(p){existingProjects[p.title]=true;});
+  var projOpts=Object.keys(existingProjects).map(function(p){return'<option value="'+esc(p)+'">'+esc(p)+'</option>';}).join('');
+
+  renderModalRoot('team-task-modal',
+    '<div class="bg-white r35 modal-content max-w-md p-8 md:p-10 shadow-2xl fade-in">'+
+    '<h2 class="text-xl md:text-2xl font-black text-rose-600 mb-6"><i class="ri-folder-3-fill"></i> 프로젝트 업무 등록</h2>'+
+    '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 선택 / 새로 입력</label><div class="flex gap-2"><select id="team-task-project-select" class="flex-1 border p-3 r24 text-sm font-bold outline-none bg-gray-50" onchange="var v=this.value;document.getElementById(\'team-task-project-custom\').classList.toggle(\'hidden\',v!==\'__new__\');"><option value="">프로젝트 선택</option>'+projOpts+'<option value="__new__">+ 새 프로젝트 입력</option></select></div><input id="team-task-project-custom" type="text" placeholder="새 프로젝트명 입력" class="hidden w-full border p-3 r24 mt-2 text-sm outline-none bg-gray-50 focus:border-rose-400"></div>'+
+    '<input id="team-task-title" type="text" placeholder="업무 제목 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-rose-400 transition">'+
+    '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">담당자 지정 (@)</label><div id="team-task-assignees" class="w-full border p-4 r24 bg-white max-h-40 overflow-y-auto space-y-2 hide-scrollbar shadow-inner"></div></div>'+
+    '<div class="mb-6"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">마감일</label><input id="team-task-deadline" type="date" class="w-full border p-4 r24 outline-none text-sm focus:border-rose-400"></div>'+
+    '<div class="flex justify-end gap-3"><button onclick="closeModal(\'team-task-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button onclick="submitTeamTask()" class="px-8 py-3.5 bg-rose-600 text-white r35 text-sm font-bold shadow-lg hover:bg-rose-700 transition">등록</button></div></div>');
+  openModal('team-task-modal');
+  populateAssignees('team-task-assignees','');
+}
+
+function submitTeamTask(){
+  var title=document.getElementById('team-task-title').value.trim();if(!title)return showToast("제목을 입력하세요.");
+  var projSel=document.getElementById('team-task-project-select').value;
+  var projCustom=document.getElementById('team-task-project-custom').value.trim();
+  var project=projSel==='__new__'?projCustom:(projSel||'미분류');
+  if(!project)return showToast("프로젝트를 선택하거나 입력하세요.");
+  var assignees=getChecked('team-task-assignees'),deadline=document.getElementById('team-task-deadline').value;
+  if(!assignees)return showToast("담당자를 지정하세요.");
+  var id=genId();var obj={id:id,taskType:'team',project:project,category:'업무',title:title,assignees:assignees,priority:'Medium',deadline:deadline,content:'',status:'Todo',creator:USER.email,checklist:[],timestamp:Date.now()};
+  CACHE.tasks.push(obj);closeModal('team-task-modal');renderTeamProjectBoard();showToast("업무 등록 완료!");FB.set('tasks/'+id,obj);
+}
+
 // 끝
