@@ -76,10 +76,13 @@ function showMentionPopup(el, query, atPos) {
 function insertMention(elId, name, atPos) {
   var el = document.getElementById(elId);
   var val = el.value;
-  el.value = val.substring(0, atPos) + '@' + name + ' ' + val.substring(el.selectionStart);
+  var before = val.substring(0, atPos);
+  var after = val.substring(el.selectionStart);
+  el.value = before + '@' + name + ' ' + (after.startsWith(' ') ? after.substring(1) : after);
   hideMentionPopup(); el.focus();
 }
 
+function hideMentionPopup() { var pop = document.getElementById('mention-popup'); if(pop) pop.classList.add('hidden'); }
 
 /*═══════════ Assignee Picker (드롭다운 + 검색) ═══════════*/
 function populateAssignees(cId,sel){
@@ -179,10 +182,8 @@ function initApp(){
   next();
 }
 
-// 기존 processData 함수를 아래로 덮어쓰세요.
 function processData(results){
   var now=Date.now();
-  // isDeleted가 true인 항목들은 화면에 보이지 않도록 필터링합니다.
   CACHE.tasks=parseNode(results.tasks).filter(function(t){return !t.isDeleted && !(t.status==='Done'&&(now-(parseInt(t.timestamp)||now))>30*86400000);});
   CACHE.devProjects=parseNode(results.devProjects).filter(function(p){return !p.isDeleted;});
   CACHE.sprints=parseNode(results.sprints).filter(function(s){return !s.isDeleted;});
@@ -195,12 +196,13 @@ function processData(results){
   CACHE.quickLinks = parseNode(results.quickLinks); 
   CACHE.comments=results.comments||{};
   
+  // 🌟 금고 비밀번호를 파괴하지 않고 원본 유지하도록 수정
   CACHE.vault=parseNode(results.vault).filter(function(v){
     if(v.isDeleted) return false;
     if(USER.role==='ADMIN'||v.creator===USER.email||v.visibility==='ALL')return true;
     if(v.visibility==='PRIVATE')return false;
     return(v.visibility||'').indexOf(USER.dept)>-1||(v.visibility||'').indexOf(USER.email)>-1;
-  }).map(function(v){return Object.assign({},v,{password:'••••••••'});});
+  });
   
   var used=0;CACHE.leaves.filter(function(l){return l.applicant&&l.applicant.toLowerCase()===USER.email&&l.status==='승인';}).forEach(function(l){if(l.type==='연차')used+=1;else if(l.type==='반차')used+=0.5;});
   CACHE.leaveInfo={total:USER.leaveTotal,used:used,remain:USER.leaveTotal-used};
@@ -402,83 +404,75 @@ var calendar = null;
 
 function renderCalendar() {
   var el = document.getElementById('tab-calendar');
+  if(!el) return;
+
+  // 1. 내 할 일 구역 (드래그 손잡이 아이콘 추가)
+  var myTodoHtml = `
+    <div data-id="col-my-todo" class="w-full lg:w-72 flex flex-col bg-white p-6 r35 card-shadow overflow-hidden transition-all">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
+        <i class="ri-draggable text-gray-300 hover:text-blue-500 cursor-move text-lg drag-handle" title="드래그해서 위치 변경"></i>
+      </div>
+      <div class="flex gap-2 mb-4">
+        <input type="text" id="my-todo-input" placeholder="추가..." class="flex-1 border p-2.5 r20 text-xs outline-none bg-gray-50" onkeypress="if(event.key==='Enter')addMyTodo()">
+        <button onclick="addMyTodo()" class="bg-pink-500 text-white w-9 h-9 r20 font-bold">+</button>
+      </div>
+      <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
+    </div>
+  `;
+
+  // 2. 전사 업무 현황 구역 (드래그 손잡이 아이콘 추가)
+  var teamBoardHtml = `
+    <div data-id="col-team-board" class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden transition-all min-w-[300px]">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="font-black text-gray-800 text-lg flex items-center"><i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황</h2>
+        <div class="flex items-center gap-3">
+          <span class="text-[10px] bg-emerald-50 text-emerald-600 px-3 py-1 r20 font-bold border border-emerald-100">전사 실시간 공유 중</span>
+          <i class="ri-draggable text-gray-300 hover:text-blue-500 cursor-move text-xl drag-handle" title="드래그해서 위치 변경"></i>
+        </div>
+      </div>
+      <div id="team-project-tracking-board" class="flex-1 overflow-y-auto space-y-8 pr-2 hide-scrollbar"></div>
+    </div>
+  `;
+
+  // 3. 브라우저에 저장된 위치(순서) 불러오기
+  var savedOrder = JSON.parse(localStorage.getItem('calLayoutOrder')) || ['col-my-todo', 'col-team-board'];
+  var blocks = { 'col-my-todo': myTodoHtml, 'col-team-board': teamBoardHtml };
+  
+  // 저장된 순서대로 HTML 조립
+  var orderedHtml = savedOrder.map(id => blocks[id] || '').join('');
+  Object.keys(blocks).forEach(id => { if(!savedOrder.includes(id)) orderedHtml += blocks[id]; });
+
+  // 4. 전체 화면 렌더링
   el.innerHTML = `
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
       <h1 class="text-2xl font-black text-gray-800"><i class="ri-briefcase-fill text-blue-600 mr-2"></i> 팀별 프로젝트 트래킹</h1>
       <button onclick="openTeamTaskModal()" class="bg-blue-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">+ 새 업무 등록</button>
     </div>
-    <div class="flex flex-col lg:flex-row gap-6 h-[calc(100vh-12rem)]">
-      <div class="w-full lg:w-72 flex flex-col bg-white p-6 r35 card-shadow overflow-hidden">
-        <h2 class="font-bold text-gray-800 mb-4 flex items-center gap-2 text-sm"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
-        <div class="flex gap-2 mb-4">
-          <input type="text" id="my-todo-input" placeholder="추가..." class="flex-1 border p-2.5 r20 text-xs outline-none bg-gray-50" onkeypress="if(event.key==='Enter')addMyTodo()">
-          <button onclick="addMyTodo()" class="bg-pink-500 text-white w-9 h-9 r20 font-bold">+</button>
-        </div>
-        <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
-      </div>
-      <div class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden">
-        <div class="flex justify-between items-center mb-6">
-          <h2 class="font-black text-gray-800 text-lg"><i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황</h2>
-          <span class="text-[10px] bg-emerald-50 text-emerald-600 px-3 py-1 r20 font-bold border border-emerald-100">전사 실시간 공유 중</span>
-        </div>
-        <div id="team-project-tracking-board" class="flex-1 overflow-y-auto space-y-8 pr-2 hide-scrollbar"></div>
-      </div>
-    </div>`;
+    <div id="cal-drag-container" class="flex flex-col lg:flex-row gap-6 h-[calc(100vh-12rem)]">
+      ${orderedHtml}
+    </div>
+  `;
+
+  // 데이터 뿌리기
   renderMyTodo();
   renderTeamProjectBoard();
-}
 
-
-// 나의 할 일 (나만 보임)
-function renderMyTodo(){
-  var el=document.getElementById('my-todo-list');if(!el)return;
-  var myTasks=CACHE.tasks.filter(function(t){return t.taskType==='personal'&&(t.creator||'').toLowerCase()===USER.email.toLowerCase();}).sort(function(a,b){return(a.status==='Done'?1:0)-(b.status==='Done'?1:0);});
-  el.innerHTML=myTasks.length===0?'<p class="text-xs text-gray-400 font-bold text-center py-4">할 일이 없습니다.</p>':myTasks.map(function(t){return'<div class="flex items-center gap-3 p-3 bg-gray-50 r20 group hover:bg-gray-100 transition"><input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0" '+(t.status==='Done'?'checked':'')+' onchange="toggleTodo(\''+t.id+'\',this.checked)"><span class="flex-1 text-sm font-bold '+(t.status==='Done'?'line-through text-gray-400':'text-gray-700')+'">'+esc(t.title)+'</span><button onclick="deleteTodo(\''+t.id+'\')" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition"><i class="ri-delete-bin-line"></i></button></div>';}).join('');
-}
-function addMyTodo(){
-  var input=document.getElementById('my-todo-input');var title=input?input.value.trim():'';if(!title)return;input.value='';
-  var id=genId();var obj={id:id,taskType:'personal',project:'일반',category:'할일',title:title,assignees:USER.email,priority:'Medium',deadline:'',content:'',status:'Todo',creator:USER.email,timestamp:Date.now()};
-  CACHE.tasks.push(obj);renderMyTodo();FB.set('tasks/'+id,obj);
-}
-function toggleTodo(id,done){var ns=done?'Done':'Todo';var t=CACHE.tasks.find(function(x){return x.id===id;});if(t)t.status=ns;renderMyTodo();renderTeamTodo();FB.patch('tasks/'+id,{status:ns});}
-function deleteTodo(id){CACHE.tasks=CACHE.tasks.filter(function(x){return x.id!==id;});renderMyTodo();renderTeamTodo();FB.remove('tasks/'+id);}
-
-// 프로젝트별 업무
-function renderTeamTodo(){
-  var el=document.getElementById('team-todo-list');if(!el)return;
-  var teamTasks=CACHE.tasks.filter(function(t){return t.taskType==='team';}).sort(function(a,b){return(b.timestamp||0)-(a.timestamp||0);});
-  if(!teamTasks.length){el.innerHTML='<p class="text-xs text-gray-400 font-bold text-center py-4">등록된 업무가 없습니다.</p>';return;}
-  
-  var groups={};teamTasks.forEach(function(t){var pj=t.project||'미분류';if(!groups[pj])groups[pj]=[];groups[pj].push(t);});
-  var html='';
-  
-  Object.keys(groups).forEach(function(pj){
-    var tasks=groups[pj];
-    var activeTasks = tasks.filter(function(t){return t.status!=='Done';});
-    var doneTasks = tasks.filter(function(t){return t.status==='Done';});
-    
-    html+='<div class="mb-5"><div class="flex items-center gap-2 mb-2 px-1"><i class="ri-folder-3-fill text-rose-400 text-sm"></i><span class="text-xs font-black text-gray-600 uppercase tracking-wider">'+esc(pj)+'</span><span class="text-[10px] text-gray-400 font-bold ml-auto">'+doneTasks.length+'/'+tasks.length+' 완료</span></div>';
-    
-    // 1. 진행 중인 업무 렌더링 함수
-    function renderTaskHTML(t, isDone) {
-      var assigneeNames=(t.assignees||'').split(',').filter(Boolean).map(function(e){return'<span class="mention-tag">@'+getMemberName(e.trim())+'</span>';}).join(' ');
-      var isMyTask=(t.assignees||'').toLowerCase().indexOf(USER.email)>-1;
-      var subItems=t.checklist||[]; var subDone=subItems.filter(function(x){return x.done;}).length;
-      return '<div class="'+(isDone?'opacity-60 bg-gray-100':'(isMyTask?\'bg-blue-50 border-blue-100\':\'bg-gray-50\')')+' border border-gray-100 r20 overflow-hidden mb-2 hover:shadow-sm transition"><div class="flex items-start gap-3 p-4 cursor-pointer" onclick="openTaskDetail(\''+t.id+'\')"><input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0 mt-0.5" '+(isDone?'checked':'')+' onclick="event.stopPropagation();toggleTodo(\''+t.id+'\',this.checked)"><div class="flex-1 min-w-0"><p class="text-sm font-bold '+(isDone?'line-through text-gray-400':'text-gray-800')+'">'+esc(t.title)+'</p><div class="flex flex-wrap gap-1.5 mt-2">'+assigneeNames+(t.deadline?'<span class="text-[10px] bg-gray-200 text-gray-600 px-2 py-0.5 r20 font-bold">'+t.deadline+'</span>':'')+(subItems.length>0?'<span class="text-[10px] bg-violet-100 text-violet-600 px-2 py-0.5 r20 font-bold"><i class="ri-checkbox-line"></i> '+subDone+'/'+subItems.length+'</span>':'')+'</div></div><i class="ri-arrow-right-s-line text-gray-300 text-xl shrink-0 mt-1"></i></div></div>';
+  // 5. 드래그 앤 드롭 기능 활성화
+  setTimeout(function(){
+    var container = document.getElementById('cal-drag-container');
+    if(container){
+      new Sortable(container, {
+        handle: '.drag-handle', // 👈 점선 아이콘을 잡아야만 드래그 됨 (내용물 드래그 방지)
+        animation: 150,
+        onEnd: function() {
+          // 위치가 바뀌면 바뀐 순서를 브라우저에 저장
+          var order = Array.from(container.children).map(c => c.getAttribute('data-id'));
+          localStorage.setItem('calLayoutOrder', JSON.stringify(order));
+        }
+      });
     }
-
-    // 2. 진행 중 업무 출력
-    activeTasks.forEach(function(t){ html += renderTaskHTML(t, false); });
-
-    // 3. 완료된 업무는 '보관함(아코디언)' 형태로 묶기
-    if(doneTasks.length > 0) {
-      html += '<details class="mt-2 group"><summary class="text-xs font-bold text-gray-500 cursor-pointer list-none hover:text-gray-800 bg-gray-100 p-2 r20 inline-flex items-center gap-1 transition">✅ 완료된 업무 '+doneTasks.length+'건 보기 <i class="ri-arrow-down-s-line group-open:rotate-180 transition"></i></summary><div class="mt-2 pl-2 border-l-2 border-gray-200">';
-      doneTasks.forEach(function(t){ html += renderTaskHTML(t, true); });
-      html += '</div></details>';
-    }
-    html+='</div>';
-  });
-  el.innerHTML=html;
+  }, 100);
 }
 
 function renderTeamProjectBoard() {
@@ -523,7 +517,7 @@ function renderTeamProjectBoard() {
   }).join('');
 }
 
-// 업무 상세 (체크리스트 관리)
+// 업무 상세 (체크리스트 관리 및 양쪽 멘션 활성화)
 function openTaskDetail(id) {
   var t = CACHE.tasks.find(x => x.id === id);
   if(!t) return;
@@ -548,13 +542,13 @@ function openTaskDetail(id) {
               <div class="flex items-center gap-3 p-3 ${item.done ? 'bg-gray-50' : 'bg-white border border-gray-100'} r20 group">
                 <input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer" ${item.done ? 'checked' : ''} 
                        onchange="toggleSubTask('${t.id}', ${idx}, this.checked)">
-                <span class="flex-1 text-sm ${item.done ? 'line-through text-gray-400' : 'font-bold text-gray-700'}">${esc(item.text)}</span>
+                <span class="flex-1 text-sm ${item.done ? 'line-through text-gray-400' : 'font-bold text-gray-700'}">${renderMentionText(item.text)}</span>
                 <span class="text-[9px] text-gray-300 font-bold">${item.completedBy ? getMemberName(item.completedBy) + ' 완료' : ''}</span>
               </div>
             `).join('')}
           </div>
           <div class="flex gap-2">
-            <input type="text" id="new-subtask-in" placeholder="할 일 추가..." class="flex-1 border p-3 r20 text-xs outline-none bg-gray-50 focus:border-blue-400">
+            <input type="text" id="new-subtask-in" placeholder="@이름 할 일 추가..." class="flex-1 border p-3 r20 text-xs outline-none bg-gray-50 focus:border-blue-400" onkeypress="if(event.key==='Enter')addSubTask('${t.id}')">
             <button onclick="addSubTask('${t.id}')" class="bg-blue-600 text-white px-5 r20 font-bold text-sm">추가</button>
           </div>
         </div>
@@ -583,7 +577,12 @@ function openTaskDetail(id) {
   `;
   renderModalRoot('task-detail-modal', html);
   openModal('task-detail-modal');
-  setTimeout(() => setupMention('task-cmt-in'), 200);
+  
+  // 🌟 핵심! 양쪽 입력창 모두에 멘션 기능을 켭니다.
+  setTimeout(() => { 
+    setupMention('task-cmt-in');    // 오른쪽 댓글창
+    setupMention('new-subtask-in'); // 왼쪽 세부업무창
+  }, 200);
 }
 
 // 하위 업무 추가 함수
