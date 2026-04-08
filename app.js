@@ -403,7 +403,7 @@ function submitQuickLink(){
 var calendar = null;
 
 // ═══════════════════════════════════════════════
-//  일정 및 할 일 (드래그 위치 변경 + 폭 크기 조절 기능)
+//  일정 및 할 일 (모바일 대응 + 창 폭 조절 저장 기능)
 // ═══════════════════════════════════════════════
 function renderCalendar() {
   var el = document.getElementById('tab-calendar');
@@ -411,31 +411,42 @@ function renderCalendar() {
 
   // 💾 저장된 너비 불러오기 (기본값 320px)
   var savedWidth = localStorage.getItem('calTodoWidth') || '320px';
+  
+  // 📱 모바일 여부 확인 (화면 폭이 1024px 미만이면 모바일로 간주)
+  var isMobile = window.innerWidth < 1024;
 
-  // 1. 내 할 일 구역 (resize-x 클래스 추가 및 style로 너비 적용)
+  // 1. 내 할 일 구역 (모바일에서는 너비 고정 해제 및 조절 금지)
   var myTodoHtml = `
-    <div data-id="col-my-todo" class="flex flex-col bg-white p-6 r35 card-shadow overflow-hidden resize-x relative" style="width: ${savedWidth}; min-width: 260px; max-width: 60%;" onmouseup="saveCalWidth(this)">
+    <div data-id="col-my-todo" 
+         class="flex flex-col bg-white p-6 r35 card-shadow overflow-hidden relative ${isMobile ? '' : 'resize-x'}" 
+         style="width: ${isMobile ? '100%' : savedWidth}; min-width: ${isMobile ? '100%' : '280px'}; max-width: ${isMobile ? '100%' : '60%'};" 
+         onmouseup="${isMobile ? '' : 'saveCalWidth(this)'}">
+      
       <div class="drag-handle flex justify-between items-center mb-4 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition" title="잡고 끌어서 이동">
-        <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm pointer-events-none"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
+        <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm pointer-events-none">
+          <i class="ri-user-heart-line text-pink-500"></i> 내 할 일
+        </h2>
         <i class="ri-drag-move-fill text-gray-300 text-lg pointer-events-none"></i>
       </div>
+      
       <div class="flex gap-2 mb-4">
         <input type="text" id="my-todo-input" placeholder="추가..." class="flex-1 border p-2.5 r20 text-xs outline-none bg-gray-50" onkeypress="if(event.key==='Enter')addMyTodo()">
         <button onclick="addMyTodo()" class="bg-pink-500 text-white w-9 h-9 r20 font-bold">+</button>
       </div>
+      
       <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
       
-      <div class="absolute bottom-1 right-2 pointer-events-none text-gray-300 opacity-50">
-        <i class="ri-arrow-left-right-line text-xs"></i>
-      </div>
+      ${isMobile ? '' : '<div class="absolute bottom-1 right-2 pointer-events-none text-gray-300 opacity-50"><i class="ri-arrow-left-right-line text-xs"></i></div>'}
     </div>
   `;
 
-  // 2. 전사 업무 현황 구역 (flex-1로 남은 공간 자동 채움)
+  // 2. 전사 업무 현황 구역
   var teamBoardHtml = `
-    <div data-id="col-team-board" class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden min-w-[300px]">
+    <div data-id="col-team-board" class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden min-w-[300px] w-full">
       <div class="drag-handle flex justify-between items-center mb-6 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition" title="잡고 끌어서 이동">
-        <h2 class="font-black text-gray-800 text-lg flex items-center pointer-events-none"><i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황</h2>
+        <h2 class="font-black text-gray-800 text-lg flex items-center pointer-events-none">
+          <i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황
+        </h2>
         <div class="flex items-center gap-3 pointer-events-none">
           <span class="text-[10px] bg-emerald-50 text-emerald-600 px-3 py-1 r20 font-bold border border-emerald-100">전사 실시간 공유 중</span>
           <i class="ri-drag-move-fill text-gray-300 text-xl"></i>
@@ -445,20 +456,18 @@ function renderCalendar() {
     </div>
   `;
 
-  // 3. 브라우저 저장 위치(좌우 순서) 불러오기
+  // 3. 배치 순서 불러오기
   var savedOrder = JSON.parse(localStorage.getItem('calLayoutOrder')) || ['col-my-todo', 'col-team-board'];
   var blocks = { 'col-my-todo': myTodoHtml, 'col-team-board': teamBoardHtml };
-  
   var orderedHtml = savedOrder.map(id => blocks[id] || '').join('');
-  Object.keys(blocks).forEach(id => { if(!savedOrder.includes(id)) orderedHtml += blocks[id]; });
 
-  // 4. 전체 화면 렌더링
+  // 4. 전체 화면 렌더링 (모바일에서는 h-auto로 변경하여 스크롤 방지)
   el.innerHTML = `
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
       <h1 class="text-2xl font-black text-gray-800"><i class="ri-briefcase-fill text-blue-600 mr-2"></i> 팀별 프로젝트 트래킹</h1>
       <button onclick="openTeamTaskModal()" class="bg-blue-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">+ 새 업무 등록</button>
     </div>
-    <div id="cal-drag-container" class="flex flex-col lg:flex-row gap-6 h-[calc(100vh-12rem)]">
+    <div id="cal-drag-container" class="flex flex-col lg:flex-row gap-6 ${isMobile ? 'h-auto' : 'h-[calc(100vh-12rem)]'}">
       ${orderedHtml}
     </div>
   `;
@@ -471,7 +480,7 @@ function renderCalendar() {
     var container = document.getElementById('cal-drag-container');
     if(container){
       new Sortable(container, {
-        handle: '.drag-handle', // 제목칸을 잡고 드래그
+        handle: '.drag-handle',
         animation: 150,
         onEnd: function() {
           var order = Array.from(container.children).map(c => c.getAttribute('data-id'));
@@ -482,9 +491,9 @@ function renderCalendar() {
   }, 100);
 }
 
-// 💾 폭(너비) 조절 시 브라우저에 자동 저장하는 함수
+// 💾 너비 저장 함수 (데스크톱 전용)
 function saveCalWidth(el) {
-  if (el.style.width) {
+  if (el && el.style.width) {
     localStorage.setItem('calTodoWidth', el.style.width);
   }
 }
