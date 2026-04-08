@@ -1718,27 +1718,40 @@ function addMyTodo(){
   var input=document.getElementById('my-todo-input');
   var title=input?input.value.trim():''; if(!title) return;
   
-  // 🌟 멘션된 사람 찾기 로직 추가
   var mentions = [];
   var mentionRegex = /@([가-힣a-zA-Z0-9]+)/g;
   var match;
+  
+  // 1. 멘션된 이름으로 정확한 이메일 찾기
   while ((match = mentionRegex.exec(title)) !== null) {
     var mName = match[1];
     var found = CACHE.members.find(m => m.name === mName);
     if(found) mentions.push(found.email.toLowerCase());
   }
 
-  var id=genId();
-  var obj={
-    id:id, taskType:'personal', project:'일반', category:'할일', title:title,
-    assignees: USER.email + (mentions.length ? ',' + mentions.join(',') : ''), // 🌟 멘션된 사람도 담당자로 포함
-    priority:'Medium', deadline:'', content:'', status:'Todo', creator:USER.email, timestamp:Date.now()
+  var id = genId();
+  // 2. 담당자 목록 생성 (나 + 멘션된 사람들)
+  var assigneeList = [USER.email.toLowerCase()];
+  mentions.forEach(m => { if(!assigneeList.includes(m)) assigneeList.push(m); });
+
+  var obj = {
+    id: id,
+    taskType: 'personal',
+    project: '일반',
+    category: '할일',
+    title: title,
+    assignees: assigneeList.join(','), // 쉼표로 구분하여 저장
+    priority: 'Medium',
+    deadline: '',
+    content: '',
+    status: 'Todo',
+    creator: USER.email,
+    timestamp: Date.now()
   };
   
-  CACHE.tasks.push(obj);
-  input.value='';
-  renderMyTodo();
-  FB.set('tasks/'+id, obj); // 실시간 반영
+  // 3. 서버에 저장 (저장 즉시 1단계 리스너가 모든 PC 화면을 갱신합니다)
+  FB.set('tasks/'+id, obj);
+  input.value = '';
 }
 
 function toggleTodo(id,done){var ns=done?'Done':'Todo';var t=CACHE.tasks.find(function(x){return x.id===id;});if(t)t.status=ns;renderMyTodo();FB.patch('tasks/'+id,{status:ns});}
@@ -1920,6 +1933,50 @@ function submitTeamTask(){
   if(!assignees)return showToast("담당자를 지정하세요.");
   var id=genId();var obj={id:id,taskType:'team',project:project,category:'업무',title:title,assignees:assignees,priority:'Medium',deadline:deadline,content:'',status:'Todo',creator:USER.email,checklist:[],timestamp:Date.now()};
   CACHE.tasks.push(obj);closeModal('team-task-modal');renderTeamProjectBoard();showToast("업무 등록 완료!");FB.set('tasks/'+id,obj);
+}
+
+// 1단계: 모든 사용자의 화면을 실시간으로 동기화하는 리스너
+function listenRealtimeTasks() {
+  db.ref('tasks').on('value', function(snapshot) {
+    var data = snapshot.val();
+    if(data) {
+      // 서버 데이터를 CACHE에 동기화
+      CACHE.tasks = Object.keys(data).map(function(k) {
+        return Object.assign({id:k}, data[k]);
+      }).filter(function(t) { return !t.isDeleted; });
+
+      // 현재 '일정 및 할 일' 탭을 보고 있다면 즉시 화면 갱신
+      var calendarTab = document.getElementById('tab-calendar');
+      if (calendarTab && !calendarTab.classList.contains('hidden')) {
+        renderMyTodo(); 
+        renderTeamProjectBoard();
+      }
+    }
+  });
+}
+
+// 앱 초기화 함수 (리스너 실행 추가)
+function initApp(){
+  showSkeleton();
+  
+  // 🌟 실시간 리스너 시작 (이제 여기서 실행됩니다)
+  listenRealtimeTasks(); 
+
+  var nodes=['tasks','devProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices','quickLinks'];
+  var results={}, idx=0;
+  
+  function next(){
+    if(idx >= nodes.length){
+      processData(results);
+      return;
+    }
+    var node = nodes[idx++];
+    FB.get(node, function(err, data){
+      results[node] = data;
+      next();
+    });
+  }
+  next();
 }
 
 // 끝
