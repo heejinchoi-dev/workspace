@@ -10,10 +10,12 @@
   <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+  
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
   <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
   
@@ -96,6 +98,9 @@
     <main id="content" class="flex-1 overflow-y-auto bg-[#f3f4f6] p-4 md:p-8 relative hide-scrollbar">
       <div id="tab-home"      class="fade-in max-w-6xl mx-auto"></div>
       <div id="tab-calendar"  class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 6rem)"></div>
+      
+      <div id="tab-teamcal"   class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
+      
       <div id="tab-dev"       class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
       <div id="tab-crm"       class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
       <div id="tab-cs"        class="fade-in max-w-6xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>

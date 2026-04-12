@@ -207,22 +207,31 @@ function processData(results){
 // ═══════════════════════════════════════════════
 //  탭 전환
 // ═══════════════════════════════════════════════
+
 function showTab(name){
   // 모바일 사이드바 닫기
   var sb=document.getElementById('sidebar'),ov=document.getElementById('sidebar-overlay');
   if(sb)sb.classList.remove('open');if(ov)ov.classList.remove('show');
+
+  // 모든 탭 숨기기
   document.querySelectorAll('[id^="tab-"]').forEach(function(s){s.classList.add('hidden');});
+  // 사이드바 활성 상태 초기화
   document.querySelectorAll('.sidebar-item').forEach(function(i){i.classList.remove('active');});
-  var targetId = (name === 'teamcal') ? 'tab-directory' : 'tab-' + name;
+
+  // 🌟 [수정] 정확한 ID 매칭 (tab-teamcal, tab-home 등)
+  var targetId = 'tab-' + name;
   var sec = document.getElementById(targetId);
   if(sec) sec.classList.remove('hidden');
-  var nav=document.querySelector('[data-tab="'+name+'"]');if(nav)nav.classList.add('active');
 
-  // 👇 여기에 teamcal: renderTeamCalendar 를 추가했습니다.
+  // 클릭한 메뉴 활성화 표시
+  var nav=document.querySelector('[data-tab="'+name+'"]');
+  if(nav)nav.classList.add('active');
+
+  // 각 탭에 맞는 화면 그리기 함수 실행
   var renders={
     home:renderDashboard,
     calendar:renderCalendar,
-    teamcal:renderTeamCalendar, // 👈 쉼표(,) 잊지 마세요!
+    teamcal:renderTeamCalendar, // 전사 캘린더
     dev:function(){setDevView(devView);},
     crm:filterCRM,
     cs:filterCS,
@@ -234,8 +243,10 @@ function showTab(name){
     admin:renderAdmin
   };
   
-  if(renders[name])renders[name]();
+  if(renders[name]) renders[name]();
 }
+
+
 function updateBadges(){
   var ac=CACHE.approval.filter(function(d){return((d.approver1||'').toLowerCase()===USER.email&&d.status==='대기')||((d.approver2||'').toLowerCase()===USER.email&&d.status==='1차 승인');}).length;
   var lc=CACHE.leaves.filter(function(d){return(d.approver1||'').toLowerCase()===USER.email&&d.status==='대기';}).length;
@@ -1046,63 +1057,7 @@ function addApprItemRow(){
   var c2=document.getElementById('appr-items-container');if(c2)c2.insertAdjacentHTML('beforeend',html);
 }
 
-async function submitApprovalBulk(){
-  var a1=document.getElementById('appr-approver1')?document.getElementById('appr-approver1').value:'';
-  var a2=document.getElementById('appr-approver2')?document.getElementById('appr-approver2').value:'';
-  var date=document.getElementById('appr-date')?document.getElementById('appr-date').value:'';
-  if(!a1||!date){showToast("1차 결재권자와 입금일 필수");return;}
-  var rows=document.querySelectorAll('.appr-item-row');if(!rows.length){showToast("최소 1항목 필요");return;}
-  var valid=true;
-  rows.forEach(function(row){
-      var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;
-      var reason=rs==='기타'?rc:rs;
-      var bank=row.querySelector('.appr-bank').value,account=row.querySelector('.appr-account').value,amount=row.querySelector('.appr-amount').value;
-      if(!reason||!bank||!account||!amount){showToast("사유, 은행, 계좌, 금액은 필수입니다");valid=false;}
-  });
-  if(!valid) return;
 
-  var isUrgent=document.getElementById('appr-is-urgent').checked;
-  var btn = document.getElementById('btn-submit-appr');
-  if(btn) { btn.disabled = true; btn.innerText = "⏳ 파일 업로드 및 처리 중..."; }
-
-  for(var i=0; i<rows.length; i++) {
-    var row = rows[i];
-    var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;
-    var reason=rs==='기타'?rc:rs;
-    var fileInput=row.querySelector('.appr-file');
-    var fileUrl = '';
-
-    // 🌟 파일 업로드 로직 강화 (실패 시 에러창 띄움)
-    if(fileInput && fileInput.files && fileInput.files[0]) {
-      try {
-        var file = fileInput.files[0];
-        var storageRef = firebase.storage().ref('receipts/' + Date.now() + '_' + file.name);
-        await storageRef.put(file);
-        fileUrl = await storageRef.getDownloadURL();
-      } catch(e) { 
-        console.error("스토리지 에러:", e); 
-        alert("파일 업로드 실패! Firebase Storage 규칙이 설정되었는지 확인해 주세요.");
-        if(btn) { btn.disabled = false; btn.innerText = "결재 올리기"; }
-        return; // 진행 중단
-      }
-    }
-
-    var id=genId();
-    var obj={
-      id:id, reason:reason, detail:row.querySelector('.appr-detail').value,
-      payMethod:row.querySelector('.appr-pay-method').value, payDetail:row.querySelector('.appr-pay-detail').value,
-      bank:row.querySelector('.appr-bank').value, account:row.querySelector('.appr-account').value,
-      amount:row.querySelector('.appr-amount').value, approver1:a1, approver2:a2||'',
-      date:date, isUrgent:isUrgent,
-      drafter:USER.email, drafterName:USER.name, status:'대기', dateCreated:Date.now(), fileUrl: fileUrl
-    };
-    CACHE.approval.push(obj);
-    FB.set('approvals/'+id, obj);
-  }
-  
-  if(btn) { btn.disabled = false; btn.innerText = "결재 올리기"; }
-  closeModal('approval-modal'); showToast("제출 완료!"); updateBadges(); renderApproval();
-}
 
 // [결재 상세창 + 영수증/결제수단/긴급뱃지 표시]
 function openApprovalDetail(id){
@@ -1619,15 +1574,15 @@ function actionApproval(id, nextStatus){
 }
 
 function renderTeamCalendar() {
-  // 👇 ID를 'tab-directory'로 맞췄습니다. (index.html에 이 ID가 있어야 합니다)
-  var el = document.getElementById('tab-directory'); 
+  // 🌟 [수정] 도화지 ID를 tab-teamcal로 변경
+  var el = document.getElementById('tab-teamcal'); 
   
-  if(!el) return; // 구역이 없으면 실행 안함
+  if(!el) return;
 
   el.innerHTML = `
     <div class="flex flex-col h-full" style="height: 80vh;">
       <div class="flex justify-between items-center mb-6">
-        <h1 class="text-2xl font-black text-gray-800"><i class="ri-google-fill text-blue-500 mr-2"></i> 전사 통합 캘린더</h1>
+        <h1 class="text-2xl font-black text-gray-800"><i class="ri-calendar-check-fill text-blue-600 mr-2"></i> 전사 통합 캘린더</h1>
         <a href="https://calendar.google.com" target="_blank" class="px-4 py-2 bg-white border r20 text-xs font-bold text-gray-600 shadow-sm hover:bg-gray-50 transition">Google 캘린더 앱에서 열기</a>
       </div>
       <div class="flex-1 bg-white r35 card-shadow overflow-hidden border border-gray-100">
