@@ -537,7 +537,7 @@ function renderTeamProjectBoard() {
   var el = document.getElementById('team-project-tracking-board');
   if(!el) return;
 
-  // 버튼 스타일 업데이트
+  // 버튼 스타일 업데이트 (리스트/보드 토글)
   var btnList = document.getElementById('view-btn-list');
   var btnBoard = document.getElementById('view-btn-board');
   if(btnList && btnBoard) {
@@ -555,15 +555,20 @@ function renderTeamProjectBoard() {
     var groups = {};
     teamTasks.forEach(t => { var p = t.project || '공통 업무'; if(!groups[p]) groups[p] = []; groups[p].push(t); });
     
-    // 🌟 개인화된 폴더 순서 불러오기
+    // 1. 개인화된 폴더 순서 불러오기
     var savedFolderOrder = JSON.parse(localStorage.getItem('teamFolderOrder')) || Object.keys(groups);
-    // 새로운 프로젝트가 생겼을 경우를 대비해 목록 보정
     Object.keys(groups).forEach(p => { if(!savedFolderOrder.includes(p)) savedFolderOrder.push(p); });
+
+    // 🌟 2. 접힘 상태 불러오기 (기본값은 '열림')
+    var folderStates = JSON.parse(localStorage.getItem('teamFolderStates')) || {};
 
     el.innerHTML = savedFolderOrder.filter(pName => groups[pName]).map(pName => {
       var tasks = groups[pName].sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+      // 🌟 이전에 접어뒀다면(closed) open 속성을 제거함
+      var isOpen = folderStates[pName] !== 'closed' ? 'open' : '';
+      
       return `
-        <details open data-project="${esc(pName)}" class="bg-gray-50/50 r35 border border-gray-100 mb-6 group transition-all folder-drag-item shadow-sm">
+        <details ${isOpen} data-project="${esc(pName)}" class="bg-gray-50/50 r35 border border-gray-100 mb-6 group transition-all folder-drag-item shadow-sm" ontoggle="saveFolderState('${esc(pName)}', this.open)">
           <summary class="p-6 font-black text-gray-700 text-base cursor-pointer list-none flex justify-between items-center outline-none folder-drag-handle">
             <div class="flex items-center">
               <i class="ri-drag-move-2-line text-gray-300 mr-3 text-lg"></i>
@@ -582,19 +587,19 @@ function renderTeamProjectBoard() {
         </details>`;
     }).join('');
 
-    // 🌟 폴더(프로젝트) 드래그 앤 드롭 활성화
+    // 드래그 앤 드롭 순서 저장 로직
     new Sortable(el, {
       handle: '.folder-drag-handle',
       animation: 150,
       onEnd: function() {
         var order = Array.from(el.querySelectorAll('.folder-drag-item')).map(item => item.getAttribute('data-project'));
         localStorage.setItem('teamFolderOrder', JSON.stringify(order));
-        showToast("개인 맞춤형 폴더 순서가 저장되었습니다.");
+        showToast("폴더 순서가 저장되었습니다.");
       }
     });
 
   } else {
-    // 칸반 보드 모드
+    // 칸반 보드 모드 (기존 유지)
     var statuses = ['Todo', 'In Progress', 'Done'];
     el.innerHTML = `<div class="flex gap-4 h-full min-w-max pb-4 overflow-x-auto">` + statuses.map(s => {
       var tasks = teamTasks.filter(t => t.status === s).sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
@@ -607,6 +612,13 @@ function renderTeamProjectBoard() {
         </div>`;
     }).join('') + `</div>`;
   }
+}
+
+// 🌟 접힘/펼침 상태 실시간 저장 함수 (새로 추가)
+function saveFolderState(projectName, isOpen) {
+  var folderStates = JSON.parse(localStorage.getItem('teamFolderStates')) || {};
+  folderStates[projectName] = isOpen ? 'open' : 'closed';
+  localStorage.setItem('teamFolderStates', JSON.stringify(folderStates));
 }
 
 // 하위 업무 추가 함수
@@ -1589,11 +1601,59 @@ function submitWiki(){
 }
 
 function openWikiDetail(id){
-  var w=CACHE.wiki.find(function(x){return String(x.id)===String(id);});if(!w)return;
-  var isPdf=!!w.pdfData;var canEdit=USER.role==='ADMIN'||w.author===USER.email;
+  var w = CACHE.wiki.find(function(x){return String(x.id)===String(id);});
+  if(!w) return;
+
+  // 🌟 [추가] 1. 읽음 로그 기록 (Realtime DB 방식)
+  if (USER) {
+    var readKey = w.id + '_' + USER.email.replace(/\./g, '_');
+    db.ref('wiki_reads/' + readKey).set({
+      wikiId: w.id,
+      userName: USER.name,
+      userEmail: USER.email,
+      at: Date.now()
+    });
+  }
+
+  var isPdf = !!w.pdfData;
+  var canEdit = USER.role === 'ADMIN' || w.author === USER.email;
   var contentHtml = w.isHtml ? w.content : esc(w.content);
-  renderModalRoot('wiki-detail-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-12 shadow-2xl relative fade-in"><button onclick="closeModal(\'wiki-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-2xl md:text-3xl font-black mb-4 text-gray-900 pr-10">'+esc(w.title)+'</h2><p class="text-sm font-bold text-gray-400 mb-6 pb-4 border-b">작성자: '+getMemberName(w.author)+'</p>'+(isPdf?'<div class="text-center mb-6"><a href="'+w.pdfData+'" download="'+esc(w.title)+'.pdf" class="inline-flex items-center gap-3 bg-red-50 text-red-600 px-8 py-4 r35 font-bold text-base hover:bg-red-100 transition"><i class="ri-file-pdf-2-fill text-2xl"></i> PDF 다운로드</a></div>':'<div class="ql-editor p-0 text-base md:text-lg text-gray-800 leading-relaxed min-h-[150px] mb-6">'+contentHtml+'</div>')+(canEdit?'<div class="flex justify-end gap-3 border-t pt-6">'+(isPdf?'':'<button onclick="openWikiEditModal(\''+w.id+'\')" class="px-6 py-3 bg-blue-50 text-blue-600 r35 text-sm font-bold">수정</button>')+'<button onclick="confirmDeleteWiki(\''+w.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold">삭제</button></div>':'')+'</div>');
+
+  // 🌟 [수정] 2. 상세 팝업 렌더링 (하단에 #wiki-reader-list 영역 추가)
+  renderModalRoot('wiki-detail-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-12 shadow-2xl relative fade-in"><button onclick="closeModal(\'wiki-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-2xl md:text-3xl font-black mb-4 text-gray-900 pr-10">'+esc(w.title)+'</h2><p class="text-sm font-bold text-gray-400 mb-6 pb-4 border-b">작성자: '+getMemberName(w.author)+'</p>'+(isPdf?'<div class="text-center mb-6"><a href="'+w.pdfData+'" download="'+esc(w.title)+'.pdf" class="inline-flex items-center gap-3 bg-red-50 text-red-600 px-8 py-4 r35 font-bold text-base hover:bg-red-100 transition"><i class="ri-file-pdf-2-fill text-2xl"></i> PDF 다운로드</a></div>':'<div class="ql-editor p-0 text-base md:text-lg text-gray-800 leading-relaxed min-h-[150px] mb-6">'+contentHtml+'</div>') +
+  
+  // 🌟 읽은 사람 목록이 들어갈 도화지
+  '<div id="wiki-reader-list" class="mt-10 pt-6 border-t border-gray-100"></div>' +
+
+  (canEdit?'<div class="flex justify-end gap-3 border-t pt-6 mt-6">'+(isPdf?'':'<button onclick="openWikiEditModal(\''+w.id+'\')" class="px-6 py-3 bg-blue-50 text-blue-600 r35 text-sm font-bold">수정</button>')+'<button onclick="confirmDeleteWiki(\''+w.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold">삭제</button></div>':'')+'</div>');
+  
   openModal('wiki-detail-modal');
+
+  // 🌟 [추가] 3. 읽은 사람 목록 렌더링 실행
+  renderWikiReaders(w.id);
+}
+
+// 읽은 사람 목록 가져와서 뿌려주기
+function renderReadStatus(targetId) {
+  db.collection('logs').where('targetId', '==', targetId).get().then(snapshot => {
+    const readers = snapshot.docs.map(doc => doc.data());
+    const readerListEl = document.getElementById('reader-list');
+    if(!readerListEl) return;
+
+    readerListEl.innerHTML = `
+      <div class="mt-8 pt-6 border-t border-gray-100">
+        <p class="text-[10px] font-black text-gray-400 mb-3 uppercase tracking-wider">읽은 사람 (${readers.length})</p>
+        <div class="flex flex-wrap gap-2">
+          ${readers.map(r => `
+            <div class="flex items-center bg-gray-50 px-2 py-1 r12 border border-gray-100">
+              <span class="text-[10px] font-bold text-gray-600">${r.userName}</span>
+              <span class="text-[8px] text-gray-400 ml-1">${timeSince(r.timestamp)}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  });
 }
 
 // 6. 위키 삭제 변경
@@ -1796,26 +1856,58 @@ function openGlobalSearchModal(){
   // 모달이 열리면 자동으로 입력창에 커서를 둡니다.
   setTimeout(function(){ document.getElementById('gs-input').focus(); }, 100);
 }
-
-function doGlobalSearch(q){
-  q = q.toLowerCase().trim(); 
+/* 🔍 통합 검색 고도화 (데이터 연결 기능 포함) */
+function doGlobalSearch(q) {
+  q = q.toLowerCase().trim();
   var el = document.getElementById('gs-results');
-  if(!q){ el.innerHTML='<p class="text-gray-400 text-sm text-center py-10 font-bold">검색어를 입력하면 결과가 나타납니다.</p>'; return; }
-  
+  if (!q) { 
+    el.innerHTML = '<p class="text-gray-400 text-sm text-center py-10 font-bold">검색어를 입력하면 결과가 나타납니다.</p>'; 
+    return; 
+  }
+
   var res = '';
-  // 1. 사내 위키 검색
-  CACHE.wiki.filter(function(w){return (w.title||'').toLowerCase().indexOf(q)>-1 || (w.content||'').toLowerCase().indexOf(q)>-1}).forEach(function(w){ res+='<div onclick="closeModal(\'gs-modal\'); showTab(\'wiki\'); setTimeout(function(){openWikiDetail(\''+w.id+'\');},200);" class="p-3 bg-gray-50 hover:bg-gray-100 r20 cursor-pointer transition"><p class="text-xs text-purple-600 font-bold mb-1"><i class="ri-book-read-fill"></i> 위키 문서</p><p class="text-sm font-black text-gray-800">'+esc(w.title)+'</p></div>'; });
   
-  // 2. CRM 검색
-  CACHE.crm.filter(function(c){return (c.company||'').toLowerCase().indexOf(q)>-1}).forEach(function(c){ res+='<div onclick="closeModal(\'gs-modal\'); showTab(\'crm\'); setTimeout(function(){openCRMDetail(\''+c.id+'\');},200);" class="p-3 bg-gray-50 hover:bg-gray-100 r20 cursor-pointer transition"><p class="text-xs text-emerald-600 font-bold mb-1"><i class="ri-briefcase-4-fill"></i> CRM 고객사</p><p class="text-sm font-black text-gray-800">'+esc(c.company)+'</p></div>'; });
-  
-  // 3. 개발 프로젝트 검색
-  CACHE.devProjects.filter(function(d){return (d.title||'').toLowerCase().indexOf(q)>-1}).forEach(function(d){ res+='<div onclick="closeModal(\'gs-modal\'); showTab(\'dev\'); setTimeout(function(){openDevDetail(\''+d.id+'\');},200);" class="p-3 bg-gray-50 hover:bg-gray-100 r20 cursor-pointer transition"><p class="text-xs text-blue-600 font-bold mb-1"><i class="ri-macbook-fill"></i> 개발 프로젝트</p><p class="text-sm font-black text-gray-800">'+esc(d.title)+'</p></div>'; });
-  
-  // 4. 조직도 멤버 검색
-  CACHE.members.filter(function(m){return (m.name||'').toLowerCase().indexOf(q)>-1 || (m.dept||'').toLowerCase().indexOf(q)>-1}).forEach(function(m){ res+='<div onclick="closeModal(\'gs-modal\'); showTab(\'directory\');" class="p-3 bg-gray-50 hover:bg-gray-100 r20 cursor-pointer transition flex justify-between items-center"><div class="flex-1"><p class="text-xs text-teal-600 font-bold mb-1"><i class="ri-group-fill"></i> 조직도 멤버</p><p class="text-sm font-black text-gray-800">'+esc(m.name)+' <span class="text-xs text-gray-400 font-normal ml-2">'+esc(m.dept)+'</span></p></div><i class="ri-arrow-right-s-line text-gray-400"></i></div>'; });
-  
-  el.innerHTML = res || '<p class="text-gray-400 text-sm text-center py-10 font-bold">검색 결과가 없습니다.</p>';
+  // 1. CRM 고객사 검색
+  var crmMatches = CACHE.crm.filter(c => (c.company||'').toLowerCase().includes(q) || (c.contactName||'').toLowerCase().includes(q));
+  crmMatches.forEach(c => {
+    res += `
+      <div onclick="closeModal('gs-modal'); showTab('crm'); setTimeout(() => openCRMDetail('${c.id}'), 200);" class="p-4 bg-emerald-50/50 hover:bg-emerald-50 r20 cursor-pointer border border-transparent hover:border-emerald-200 transition mb-2">
+        <p class="text-[10px] text-emerald-600 font-black mb-1"><i class="ri-briefcase-4-fill"></i> CRM 고객사</p>
+        <p class="text-sm font-black text-gray-800">${esc(c.company)} <span class="text-xs font-normal text-gray-500">(${esc(c.contactName || '담당자미정')})</span></p>
+      </div>`;
+  });
+
+  // 2. 개발 프로젝트 검색
+  var devMatches = CACHE.devProjects.filter(p => (p.title||'').toLowerCase().includes(q));
+  devMatches.forEach(p => {
+    res += `
+      <div onclick="closeModal('gs-modal'); showTab('dev'); setTimeout(() => openDevDetail('${p.id}'), 200);" class="p-4 bg-blue-50/50 hover:bg-blue-50 r20 cursor-pointer border border-transparent hover:border-blue-200 transition mb-2">
+        <p class="text-[10px] text-blue-600 font-black mb-1"><i class="ri-macbook-fill"></i> 개발 프로젝트</p>
+        <p class="text-sm font-black text-gray-800">${esc(p.title)} <span class="text-[10px] bg-blue-100 px-1.5 py-0.5 r10 ml-2">${p.status}</span></p>
+      </div>`;
+  });
+
+  // 3. 전사 업무(Task) 검색
+  var taskMatches = CACHE.tasks.filter(t => (t.title||'').toLowerCase().includes(q));
+  taskMatches.forEach(t => {
+    res += `
+      <div onclick="closeModal('gs-modal'); showTab('calendar'); setTimeout(() => openTaskDetail('${t.id}'), 200);" class="p-4 bg-rose-50/50 hover:bg-rose-50 r20 cursor-pointer border border-transparent hover:border-rose-200 transition mb-2">
+        <p class="text-[10px] text-rose-600 font-black mb-1"><i class="ri-checkbox-circle-fill"></i> 진행 업무</p>
+        <p class="text-sm font-black text-gray-800">${esc(t.title)} <span class="text-xs font-normal text-gray-500">@${t.project}</span></p>
+      </div>`;
+  });
+
+  // 4. 사내 위키 검색
+  var wikiMatches = CACHE.wiki.filter(w => (w.title||'').toLowerCase().includes(q) || (w.content||'').toLowerCase().includes(q));
+  wikiMatches.forEach(w => {
+    res += `
+      <div onclick="closeModal('gs-modal'); showTab('wiki'); setTimeout(() => openWikiDetail('${w.id}'), 200);" class="p-4 bg-gray-50 hover:bg-gray-100 r20 cursor-pointer border border-gray-200 transition mb-2">
+        <p class="text-[10px] text-gray-500 font-black mb-1"><i class="ri-book-read-fill"></i> 위키 문서</p>
+        <p class="text-sm font-black text-gray-800">${esc(w.title)}</p>
+      </div>`;
+  });
+
+  el.innerHTML = res || '<p class="text-gray-400 text-sm text-center py-10 font-bold">검색 결과가 없습니다. 🤔</p>';
 }
 
 /*═══════════ 다크 모드 토글 기능 ═══════════*/
@@ -2590,6 +2682,33 @@ function sendNativeNotification(title, body) {
   }
 }
 
+// 읽은 사람 명단을 실시간으로 가져와서 출력
+function renderWikiReaders(wikiId) {
+  var el = document.getElementById('wiki-reader-list');
+  if(!el) return;
+
+  db.ref('wiki_reads').orderByChild('wikiId').equalTo(wikiId).once('value', function(snap) {
+    var data = snap.val();
+    if(!data) {
+      el.innerHTML = '<p class="text-[10px] font-black text-gray-300 uppercase tracking-widest">아직 읽은 사람이 없습니다.</p>';
+      return;
+    }
+
+    var readers = Object.values(data).sort((a, b) => b.at - a.at);
+    
+    el.innerHTML = `
+      <p class="text-[10px] font-black text-gray-400 mb-3 uppercase tracking-wider">읽은 사람 (${readers.length})</p>
+      <div class="flex flex-wrap gap-2">
+        ${readers.map(r => `
+          <div class="flex items-center bg-gray-50 px-2.5 py-1 r12 border border-gray-100 shadow-sm" title="${fmtDT(r.at)}">
+            <span class="text-[10px] font-bold text-gray-600">${r.userName}</span>
+            <span class="text-[8px] text-gray-300 ml-1.5 font-normal">${fmtDT(r.at).split(' ')[0]}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  });
+}
 
 
 // 🌟 뷰 전환 전용 함수 (이게 있어야 리스트/보드 전환이 됩니다)
