@@ -11,6 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="CircularLabs">
   <link rel="apple-touch-icon" href="https://i.imgur.com/gzXQ8nD.png">
   <title>Circular Labs Workspace</title>
+  
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
@@ -25,90 +26,93 @@
   
   <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
   <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
-  
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="bg-[#f3f4f6]">
 
-<div id="login-screen" class="fixed inset-0 bg-gradient-to-br from-indigo-900 to-blue-800 flex items-center justify-center z-[200] p-4">
+<div id="login-screen" class="fixed inset-0 bg-gradient-to-br from-indigo-900 to-blue-800 flex items-center justify-center z-[300] p-4">
   <div class="bg-white r35 p-10 md:p-16 shadow-2xl text-center w-full max-w-sm fade-in">
     <img src="https://i.imgur.com/gzXQ8nD.png" alt="Logo" class="h-12 mx-auto mb-8 object-contain">
     <h1 class="text-2xl font-black text-gray-800 mb-2">Circular Labs</h1>
     <p class="text-sm text-gray-400 mb-10">워크스페이스 로그인</p>
     <button id="google-login-btn" class="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200 hover:border-blue-400 text-gray-700 font-bold py-4 r24 transition shadow-sm">
-      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5"> Google 로그인
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-5" alt="G"> Google 로그인
     </button>
     <p id="login-error" class="text-red-500 text-xs font-bold mt-4 hidden">허용되지 않은 계정입니다.</p>
   </div>
 </div>
 
-<div id="toast-msg" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 translate-y-4 bg-gray-900 text-white px-8 py-4 r35 shadow-2xl transition-all duration-300 opacity-0 pointer-events-none z-[100] font-bold text-sm flex items-center gap-3">
-  <i class="ri-notification-3-line text-xl"></i><span id="toast-text"></span>
+<div id="toast-msg" class="fixed bottom-10 left-1/2 transform -translate-x-1/2 translate-y-4 bg-gray-900 text-white px-8 py-4 r35 shadow-2xl transition-all duration-300 opacity-0 pointer-events-none z-[500] font-bold text-sm flex items-center gap-3">
+  <i class="ri-notification-3-line text-xl text-blue-400"></i><span id="toast-text"></span>
 </div>
 
-<div id="app" class="hidden h-screen overflow-hidden">
-  <div id="mobile-header" class="hidden items-center justify-between bg-white border-b px-4 py-3 shrink-0 z-30">
-    <button onclick="toggleSidebar()" class="text-gray-600"><i class="ri-menu-3-line text-2xl"></i></button>
+<div id="app" class="hidden h-screen overflow-hidden flex flex-col">
+  
+  <div id="mobile-header" class="lg:hidden flex items-center justify-between bg-white border-b px-4 py-3 shrink-0 z-30">
+    <button onclick="toggleSidebar()" class="text-gray-600 p-2"><i class="ri-menu-3-line text-2xl"></i></button>
     <img src="https://i.imgur.com/gzXQ8nD.png" alt="Logo" class="h-8 object-contain">
-    <button onclick="openNotifModal()" class="text-gray-600 relative"><i class="ri-notification-3-line text-2xl"></i><span id="notif-badge-mobile" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">0</span></button>
+    <button onclick="openNotifModal()" class="text-gray-600 relative p-2">
+      <i class="ri-notification-3-line text-2xl"></i>
+      <span id="notif-badge-mobile" class="hidden absolute top-1 right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">0</span>
+    </button>
   </div>
+
   <div class="flex flex-1 overflow-hidden">
-    <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
-    <aside id="sidebar" class="w-72 bg-[#fbfbfa] border-r border-gray-200 flex flex-col p-6 z-10 overflow-y-auto hide-scrollbar flex-shrink-0">
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden" onclick="toggleSidebar()"></div>
+    
+    <aside id="sidebar" class="w-72 bg-[#fbfbfa] border-r border-gray-200 flex flex-col p-6 z-50 overflow-y-auto hide-scrollbar flex-shrink-0 transition-transform duration-300 -translate-x-full lg:translate-x-0 fixed lg:static inset-y-0 left-0">
       <div class="flex items-center justify-center mb-10 h-12">
         <img src="https://i.imgur.com/gzXQ8nD.png" alt="Logo" class="h-full object-contain max-w-full">
       </div>
       
-      <nav class="flex-1 space-y-2 text-sm font-medium text-gray-600">
-        <div onclick="showTab('home')"      data-tab="home"      class="sidebar-item flex items-center gap-4 p-3.5 r24 active"><i class="ri-home-smile-2-fill text-xl"></i> 대시보드</div>
-        <div class="my-3 border-t border-gray-200"></div>
-        <div onclick="showTab('calendar')"  data-tab="calendar"  class="sidebar-item flex items-center gap-4 p-3.5 r24 text-rose-600"><i class="ri-calendar-todo-fill text-xl"></i> 일정 및 할 일</div>
-        <div onclick="showTab('teamcal')"   data-tab="teamcal"   class="sidebar-item flex items-center gap-4 p-3.5 r24 text-blue-600"><i class="ri-calendar-check-fill text-xl"></i> 전사 캘린더</div>
-        
-        <div onclick="showTab('products')"  data-tab="products"  class="sidebar-item flex items-center gap-4 p-3.5 r24 text-pink-600"><i class="ri-box-3-fill text-xl"></i> 제품 카탈로그</div>
-        
-        <div onclick="showTab('dev')"       data-tab="dev"       class="sidebar-item flex items-center gap-4 p-3.5 r24 text-indigo-600"><i class="ri-macbook-fill text-xl"></i> 개발 프로젝트</div>
-        <div onclick="showTab('crm')"       data-tab="crm"       class="sidebar-item flex items-center gap-4 p-3.5 r24 text-emerald-600"><i class="ri-briefcase-4-fill text-xl"></i> 영업 파이프라인</div>
-        <div onclick="showTab('cs')"        data-tab="cs"        class="sidebar-item flex items-center gap-4 p-3.5 r24 text-orange-500"><i class="ri-customer-service-2-fill text-xl"></i> CS 고객지원</div>
-        <div class="my-3 border-t border-gray-200"></div>
-        <div onclick="showTab('approval')"  data-tab="approval"  class="sidebar-item flex items-center gap-4 p-3.5 r24 text-gray-800"><i class="ri-bank-card-fill text-xl"></i> 지출/결재 <span id="badge-appr" class="sidebar-badge hidden">0</span></div>
-        <div onclick="showTab('vault')"     data-tab="vault"     class="sidebar-item flex items-center gap-4 p-3.5 r24 text-amber-600"><i class="ri-shield-keyhole-fill text-xl"></i> 팀 보안 금고</div>
-        <div onclick="showTab('wiki')"      data-tab="wiki"      class="sidebar-item flex items-center gap-4 p-3.5 r24 text-gray-800"><i class="ri-book-read-fill text-xl"></i> 사내 위키</div>
-        <div onclick="showTab('leaves')"    data-tab="leaves"    class="sidebar-item flex items-center gap-4 p-3.5 r24 text-purple-600"><i class="ri-flight-takeoff-fill text-xl"></i> 휴가/근태 <span id="badge-leave" class="sidebar-badge hidden">0</span></div>
-        <div onclick="showTab('directory')" data-tab="directory" class="sidebar-item flex items-center gap-4 p-3.5 r24 text-teal-600"><i class="ri-group-fill text-xl"></i> 조직도</div>
+      <nav class="flex-1 space-y-1.5 text-sm font-bold text-gray-500">
+        <div onclick="showTab('home')"      data-tab="home"      class="sidebar-item flex items-center gap-4 p-3.5 r24 active cursor-pointer hover:bg-white hover:shadow-sm transition"><i class="ri-home-smile-2-fill text-xl"></i> 대시보드</div>
+        <div class="my-3 border-t border-gray-100"></div>
+        <div onclick="showTab('calendar')"  data-tab="calendar"  class="sidebar-item flex items-center gap-4 p-3.5 r24 text-rose-500 cursor-pointer hover:bg-white transition"><i class="ri-calendar-todo-fill text-xl"></i> 일정 및 할 일</div>
+        <div onclick="showTab('teamcal')"   data-tab="teamcal"   class="sidebar-item flex items-center gap-4 p-3.5 r24 text-blue-600 cursor-pointer hover:bg-white transition"><i class="ri-calendar-check-fill text-xl"></i> 전사 캘린더</div>
+        <div onclick="showTab('products')"  data-tab="products"  class="sidebar-item flex items-center gap-4 p-3.5 r24 text-pink-600 cursor-pointer hover:bg-white transition"><i class="ri-box-3-fill text-xl"></i> 제품 라인업</div>
+        <div onclick="showTab('dev')"       data-tab="dev"       class="sidebar-item flex items-center gap-4 p-3.5 r24 text-indigo-600 cursor-pointer hover:bg-white transition"><i class="ri-macbook-fill text-xl"></i> 개발 프로젝트</div>
+        <div onclick="showTab('crm')"       data-tab="crm"       class="sidebar-item flex items-center gap-4 p-3.5 r24 text-emerald-600 cursor-pointer hover:bg-white transition"><i class="ri-briefcase-4-fill text-xl"></i> 영업 파이프라인</div>
+        <div onclick="showTab('cs')"        data-tab="cs"        class="sidebar-item flex items-center gap-4 p-3.5 r24 text-orange-500 cursor-pointer hover:bg-white transition"><i class="ri-customer-service-2-fill text-xl"></i> CS 고객지원</div>
+        <div class="my-3 border-t border-gray-100"></div>
+        <div onclick="showTab('approval')"  data-tab="approval"  class="sidebar-item flex items-center gap-4 p-3.5 r24 text-gray-700 cursor-pointer hover:bg-white transition"><i class="ri-bank-card-fill text-xl"></i> 지출/결재 <span id="badge-appr" class="hidden bg-blue-500 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-auto">0</span></div>
+        <div onclick="showTab('vault')"     data-tab="vault"     class="sidebar-item flex items-center gap-4 p-3.5 r24 text-amber-600 cursor-pointer hover:bg-white transition"><i class="ri-shield-keyhole-fill text-xl"></i> 팀 보안 금고</div>
+        <div onclick="showTab('wiki')"      data-tab="wiki"      class="sidebar-item flex items-center gap-4 p-3.5 r24 text-gray-700 cursor-pointer hover:bg-white transition"><i class="ri-book-read-fill text-xl"></i> 사내 위키</div>
+        <div onclick="showTab('leaves')"    data-tab="leaves"    class="sidebar-item flex items-center gap-4 p-3.5 r24 text-purple-600 cursor-pointer hover:bg-white transition"><i class="ri-flight-takeoff-fill text-xl"></i> 휴가/근태 <span id="badge-leave" class="hidden bg-purple-500 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-auto">0</span></div>
+        <div onclick="showTab('directory')" data-tab="directory" class="sidebar-item flex items-center gap-4 p-3.5 r24 text-teal-600 cursor-pointer hover:bg-white transition"><i class="ri-group-fill text-xl"></i> 조직도</div>
         <div id="admin-menu" class="hidden">
-          <div class="my-3 border-t border-gray-200"></div>
-          <div onclick="showTab('admin')"   data-tab="admin"     class="sidebar-item flex items-center gap-4 p-3.5 r24 text-red-600"><i class="ri-settings-3-fill text-xl"></i> 관리자 설정</div>
+          <div class="my-3 border-t border-gray-100"></div>
+          <div onclick="showTab('admin')"   data-tab="admin"     class="sidebar-item flex items-center gap-4 p-3.5 r24 text-red-600 cursor-pointer hover:bg-white transition"><i class="ri-settings-3-fill text-xl"></i> 관리자 설정</div>
         </div>
       </nav>
 
-      <div class="mt-6 p-5 bg-white r24 card-shadow text-xs">
-        <div class="font-black text-sm mb-1 text-gray-800" id="sidebar-name"></div>
-        <div class="text-gray-400 truncate mb-3" id="sidebar-email"></div>
+      <div class="mt-6 p-5 bg-white r24 card-shadow text-xs border border-gray-100">
+        <div class="font-black text-sm mb-1 text-gray-800" id="sidebar-name">사용자명</div>
+        <div class="text-gray-400 truncate mb-4" id="sidebar-email">email@circularlabs.co.kr</div>
         
         <div class="flex gap-2 mb-2">
-          <button onclick="toggleDarkMode()" class="flex-1 flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 transition p-3 r20 border border-gray-200 text-gray-600 font-bold text-xs" title="다크 모드">
+          <button onclick="toggleDarkMode()" class="flex-1 flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 transition p-2.5 r16 border border-gray-100 text-gray-600 font-bold" title="테마 변경">
             <i class="ri-moon-fill"></i> 테마
           </button>
-          <button onclick="openGlobalSearchModal()" class="flex-1 flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 transition p-3 r20 border border-gray-200 text-gray-600 font-bold text-xs" title="통합 검색 (Ctrl+K)">
+          <button onclick="openGlobalSearchModal()" class="flex-1 flex items-center justify-center gap-2 bg-gray-50 hover:bg-gray-100 transition p-2.5 r16 border border-gray-100 text-gray-600 font-bold" title="검색 (Ctrl+K)">
             <i class="ri-search-line"></i> 검색
           </button>
         </div>
 
-        <button onclick="openNotifModal()" class="w-full flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition p-3 r20 border border-gray-200 mb-2">
-          <span class="flex items-center gap-2 text-gray-600 font-bold text-xs"><i class="ri-notification-3-fill text-blue-500 text-base"></i> 알림 센터</span>
+        <button onclick="openNotifModal()" class="w-full flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition p-3 r16 border border-gray-100 mb-2">
+          <span class="flex items-center gap-2 text-gray-600 font-bold"><i class="ri-notification-3-fill text-blue-500 text-base"></i> 알림 센터</span>
           <span id="notif-badge" class="hidden bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">0</span>
         </button>
-        <button onclick="signOut()" class="w-full flex items-center justify-center gap-2 bg-gray-50 hover:bg-red-50 hover:text-red-600 transition p-3 r20 border border-gray-200 text-gray-500 font-bold text-xs">
+        <button onclick="signOut()" class="w-full flex items-center justify-center gap-2 bg-gray-50 hover:bg-red-50 hover:text-red-600 transition p-3 r16 border border-gray-100 text-gray-400 font-bold">
           <i class="ri-logout-box-line"></i> 로그아웃
         </button>
       </div>
     </aside>
 
-    <main id="content" class="flex-1 overflow-y-auto bg-[#f3f4f6] p-4 md:p-8 relative hide-scrollbar">
+    <main id="content" class="flex-1 overflow-y-auto p-4 md:p-8 relative hide-scrollbar">
       <div id="tab-home"      class="fade-in max-w-6xl mx-auto"></div>
       <div id="tab-calendar"  class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 6rem)"></div>
       <div id="tab-teamcal"   class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
@@ -130,18 +134,19 @@
 
 <script src="app.js"></script>
 <script>
+  // PWA 등록
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('./sw.js')
-        .then(reg => console.log('앱 모드(PWA) 준비 완료!'))
-        .catch(err => console.log('앱 모드 등록 실패:', err));
+        .then(reg => console.log('PWA 준비 완료'))
+        .catch(err => console.log('PWA 등록 실패', err));
     });
   }
 
-  // 🌟 [추가 팁] 화면이 바뀔 때마다 코드 블록 색상을 자동으로 입히는 감시자
+  // 코드 하이라이팅 감시자
   const observer = new MutationObserver(() => {
     document.querySelectorAll('pre code').forEach((el) => {
-      if (!el.dataset.highlighted) { // 이미 칠해진 건 건너뜀
+      if (!el.dataset.highlighted) {
         hljs.highlightElement(el);
         el.dataset.highlighted = 'yes';
       }

@@ -2570,11 +2570,16 @@ function filterProducts() {
   }
 }
 
-// 🌟 제품 저장 함수 (데이터 필드명 일치화)
+
+// 🌟 제품 저장 함수 (화면 튕김 방지 및 필드명 최적화 버전)
 async function submitNewProduct(id) {
   const btn = document.getElementById('btn-prod-save');
-  if(btn) btn.disabled = true;
+  if(btn) {
+    btn.disabled = true;
+    btn.innerText = "⏳ 저장 중...";
+  }
 
+  // 1. 데이터 수집 (시안의 표 열과 1:1 매칭)
   var obj = {
     name: document.getElementById('p-name').value.trim(),
     code: document.getElementById('p-code').value.trim(),
@@ -2584,35 +2589,56 @@ async function submitNewProduct(id) {
     category: document.getElementById('p-cat').value,
     imageUrl: document.getElementById('p-img-url').value || "",
     
-    // 🌟 이 키값들이 표의 데이터와 정확히 매칭됩니다.
-    price_origin: Number(document.getElementById('p-p1').value) || 0,
-    price_buy: Number(document.getElementById('p-p2').value) || 0,
-    price_rent: Number(document.getElementById('p-p3').value) || 0,
+    // 💰 가격 데이터 매칭
+    price_origin: Number(document.getElementById('p-p1').value) || 0, // 원가
+    price_buy: Number(document.getElementById('p-p2').value) || 0,    // 구입가
+    price_rent: Number(document.getElementById('p-p3').value) || 0,   // 렌탈가
     
     description: document.getElementById('p-desc').value,
     updatedAt: Date.now()
   };
 
-  if(!obj.name || !obj.code) return showToast("⚠️ 제품명과 코드는 필수입니다.");
+  // 필수값 검성
+  if(!obj.name || !obj.code) {
+    showToast("⚠️ 제품명과 코드는 필수입니다.");
+    if(btn) { btn.disabled = false; btn.innerText = "제품 데이터 저장"; }
+    return;
+  }
 
   try {
     if(id) {
+      // 수정 모드
       await db.ref('products/' + id).update(obj);
-      showToast("✅ 정보가 수정되었습니다.");
+      // 로컬 캐시 즉시 업데이트 (속도 최적화)
+      var idx = CACHE.products.findIndex(x => x.id === id);
+      if(idx > -1) Object.assign(CACHE.products[idx], obj);
+      showToast("✅ 수정 완료");
     } else {
+      // 신규 등록 모드
       var newId = genId();
       obj.id = newId; 
       obj.creator = USER.email; 
       obj.timestamp = Date.now();
       await db.ref('products/' + newId).set(obj);
-      showToast("✅ 신규 제품이 등록되었습니다.");
+      CACHE.products.push(obj); // 로컬 캐시에 추가
+      showToast("✅ 등록 완료");
     }
+
+    // 2. 모달 닫기
     closeModal('product-edit-modal');
-    initApp(); 
+
+    // 🌟 3. 화면 튕김 방지 핵심 로직
+    // initApp()을 호출하지 않고, 현재 탭(제품 라인업)을 유지하며 리스트만 다시 그립니다.
+    renderProducts(); 
+
   } catch(e) {
+    console.error(e);
     showToast("❌ 저장 중 오류 발생");
   } finally {
-    if(btn) btn.disabled = false;
+    if(btn) {
+      btn.disabled = false;
+      btn.innerText = "제품 데이터 저장";
+    }
   }
 }
 
@@ -2999,6 +3025,30 @@ function handleCsvFile(input) {
 function changeTeamView(mode) {
   teamTaskViewMode = mode;
   renderTeamProjectBoard();
+}
+// 🌟 공지사항 팝업 제어 (7일간 보지 않기 로직 포함)
+function closeNoticeModal() {
+  const isHideChecked = document.getElementById('hide-notice-week')?.checked;
+  
+  if (isHideChecked) {
+    // 현재 시간 + 7일(ms 단위)을 계산하여 로컬 스토리지에 저장
+    const expiry = Date.now() + (7 * 24 * 60 * 60 * 1000);
+    localStorage.setItem('hideNoticeUntil', expiry);
+    showToast("🌙 일주일 동안 공지 팝업을 띄우지 않습니다.");
+  }
+  
+  closeModal('global-notice-modal');
+}
+
+// 🌟 앱 시작 시(initApp 등) 호출하여 팝업을 띄울지 판단하는 로직
+function checkAndShowNotice(content) {
+  const hideUntil = localStorage.getItem('hideNoticeUntil');
+  const now = Date.now();
+
+  // 저장된 기한이 없거나, 기한이 지났을 때만 팝업을 띄움
+  if (!hideUntil || now > parseInt(hideUntil)) {
+    showNoticePopup(content); 
+  }
 }
 
 // 끝
