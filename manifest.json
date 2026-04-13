@@ -1,0 +1,21 @@
+{
+  "name": "Circular Labs 그룹웨어",
+  "short_name": "CircularLabs",
+  "description": "사내 전용 업무 워크스페이스",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "https://i.imgur.com/gzXQ8nD.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://i.imgur.com/gzXQ8nD.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

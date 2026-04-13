@@ -266,20 +266,70 @@ function initConfirmModal(){renderModalRoot('custom-confirm-modal','<div class="
 // ═══════════════════════════════════════════════
 //  알림
 // ═══════════════════════════════════════════════
+
 function buildNotifications(){
-  var notes=[],today=new Date();today.setHours(0,0,0,0);var todayStr=new Date().toISOString().slice(0,10);
-  CACHE.approval.filter(function(d){return((d.approver1||'').toLowerCase()===USER.email&&d.status==='대기')||((d.approver2||'').toLowerCase()===USER.email&&d.status==='1차 승인');}).forEach(function(d){notes.push({icon:'ri-bank-card-fill',color:'text-blue-500',bg:'bg-blue-50',msg:'결재 대기: <b>'+esc(d.reason)+'</b> ₩'+Number(d.amount).toLocaleString(),action:function(){closeModal('notif-modal');showTab('approval');}});});
-  CACHE.leaves.filter(function(d){return(d.approver1||'').toLowerCase()===USER.email&&d.status==='대기';}).forEach(function(d){notes.push({icon:'ri-flight-takeoff-fill',color:'text-purple-500',bg:'bg-purple-50',msg:'휴가 결재 대기: <b>'+d.applicantName+'</b>',action:function(){closeModal('notif-modal');showTab('leaves');}});});
-  // 팀 할일 알림: @로 나한테 할당된 것
-  CACHE.tasks.filter(function(t){return t.taskType==='team'&&t.status!=='Done'&&(t.assignees||'').toLowerCase().indexOf(USER.email)>-1;}).forEach(function(t){
-    if(t.notified&&t.notified[USER.email])return;
-    notes.push({icon:'ri-at-line',color:'text-rose-500',bg:'bg-rose-50',msg:'업무 할당: <b>'+esc(t.title)+'</b>',action:function(){closeModal('notif-modal');showTab('calendar');}});
+  var notes=[], today=new Date(); today.setHours(0,0,0,0);
+  var todayStr = new Date().toISOString().slice(0,10);
+  
+  // 🌟 [추가] 로컬 스토리지에서 읽은 알림 목록 가져오기 (임시 처리 방식)
+  var readNotifs = JSON.parse(localStorage.getItem('read_notifs_' + USER.email)) || [];
+
+  // 1. 결재 알림
+  CACHE.approval.filter(function(d){
+    var isTarget = ((d.approver1||'').toLowerCase()===USER.email && d.status==='대기') || ((d.approver2||'').toLowerCase()===USER.email && d.status==='1차 승인');
+    return isTarget && !readNotifs.includes('appr_' + d.id); // 읽지 않은 것만
+  }).forEach(function(d){
+    notes.push({ id: 'appr_' + d.id, icon:'ri-bank-card-fill', color:'text-blue-500', bg:'bg-blue-50', msg:'결재 대기: <b>'+esc(d.reason)+'</b>', action:function(){ showTab('approval'); }});
   });
-  CACHE.tasks.filter(function(t){if(!t.deadline||t.status==='Done')return false;var diff=Math.ceil((new Date(t.deadline)-today)/86400000);return diff<=0&&(t.assignees||'').toLowerCase().indexOf(USER.email)>-1;}).forEach(function(t){notes.push({icon:'ri-alarm-warning-fill',color:'text-red-500',bg:'bg-red-50',msg:'오늘 마감: <b>'+esc(t.title)+'</b>',action:function(){closeModal('notif-modal');showTab('calendar');}});});
-  CACHE.crm.filter(function(d){return d.nextActionDate&&d.nextActionDate<=todayStr&&d.status!=='계약성공(Won)';}).forEach(function(d){notes.push({icon:'ri-briefcase-4-fill',color:'text-emerald-500',bg:'bg-emerald-50',msg:'팔로업 필요: <b>'+esc(d.company)+'</b>',action:function(){closeModal('notif-modal');showTab('crm');}});});
+
+  // 2. 휴가 알림
+  CACHE.leaves.filter(function(d){
+    var isTarget = (d.approver1||'').toLowerCase()===USER.email && d.status==='대기';
+    return isTarget && !readNotifs.includes('leave_' + d.id);
+  }).forEach(function(d){
+    notes.push({ id: 'leave_' + d.id, icon:'ri-flight-takeoff-fill', color:'text-purple-500', bg:'bg-purple-50', msg:'휴가 결재 대기: <b>'+d.applicantName+'</b>', action:function(){ showTab('leaves'); }});
+  });
+
+  // 3. 업무 할당 알림
+  CACHE.tasks.filter(function(t){
+    var isTarget = t.taskType==='team' && t.status!=='Done' && (t.assignees||'').toLowerCase().indexOf(USER.email)>-1;
+    return isTarget && !readNotifs.includes('task_' + t.id);
+  }).forEach(function(t){
+    notes.push({ id: 'task_' + t.id, icon:'ri-at-line', color:'text-rose-500', bg:'bg-rose-50', msg:'업무 할당: <b>'+esc(t.title)+'</b>', action:function(){ showTab('calendar'); setTimeout(()=>openTaskDetail(t.id), 200); }});
+  });
+
+  // 4. CRM 팔로업
+  CACHE.crm.filter(function(d){
+    var isTarget = d.nextActionDate && d.nextActionDate <= todayStr && d.status!=='계약성공(Won)';
+    return isTarget && !readNotifs.includes('crm_' + d.id);
+  }).forEach(function(d){
+    notes.push({ id: 'crm_' + d.id, icon:'ri-briefcase-4-fill', color:'text-emerald-500', bg:'bg-emerald-50', msg:'팔로업 필요: <b>'+esc(d.company)+'</b>', action:function(){ showTab('crm'); }});
+  });
+
   return notes;
 }
-function openNotifModal(){var notes=buildNotifications();renderModalRoot('notif-modal','<div class="bg-white r35 modal-content max-w-md p-8 md:p-10 shadow-2xl fade-in relative max-h-[85vh] flex flex-col"><button onclick="closeModal(\'notif-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-2xl font-black mb-6 text-gray-800"><i class="ri-notification-3-fill text-blue-500 mr-2"></i> 알림 센터</h2><div class="flex-1 overflow-y-auto hide-scrollbar">'+(notes.length===0?'<p class="text-sm text-gray-400 font-bold text-center py-10">새로운 알림이 없습니다 🎉</p>':notes.map(function(n,i){return'<div id="notif-'+i+'" class="flex items-start gap-4 p-4 '+n.bg+' r24 cursor-pointer hover:opacity-80 transition mb-3"><i class="'+n.icon+' '+n.color+' text-xl shrink-0 mt-0.5"></i><p class="text-sm text-gray-700">'+n.msg+'</p></div>';}).join(''))+'</div></div>');openModal('notif-modal');notes.forEach(function(n,i){var el=document.getElementById('notif-'+i);if(el)el.onclick=n.action;});}
+function openNotifModal(){
+  var notes = buildNotifications();
+  renderModalRoot('notif-modal','<div class="bg-white r35 modal-content max-w-md p-8 md:p-10 shadow-2xl fade-in relative max-h-[85vh] flex flex-col"><button onclick="closeModal(\'notif-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black"><i class="ri-close-line text-3xl"></i></button><h2 class="text-2xl font-black mb-6 text-gray-800"><i class="ri-notification-3-fill text-blue-500 mr-2"></i> 알림 센터</h2><div class="flex-1 overflow-y-auto hide-scrollbar">'+(notes.length===0?'<p class="text-sm text-gray-400 font-bold text-center py-10">새로운 알림이 없습니다 🎉</p>':notes.map(function(n, i){
+    return '<div id="notif-item-'+i+'" class="flex items-start gap-4 p-4 '+n.bg+' r24 cursor-pointer hover:opacity-80 transition mb-3 group relative">'+
+             '<i class="'+n.icon+' '+n.color+' text-xl shrink-0 mt-0.5"></i>'+
+             '<div class="flex-1 min-w-0"><p class="text-sm text-gray-700">'+n.msg+'</p></div>'+
+             '<i class="ri-check-line text-gray-300 group-hover:text-green-500 text-lg"></i>'+
+           '</div>';
+  }).join(''))+'</div></div>');
+  
+  openModal('notif-modal');
+  
+  // 클릭 이벤트 바인딩
+  notes.forEach(function(n, i){
+    var el = document.getElementById('notif-item-' + i);
+    if(el) {
+      el.onclick = function() {
+        markNotifAsRead(n.id, n.action);
+      };
+    }
+  });
+}
 function refreshNotifBadge(){var c=buildNotifications().length;['notif-badge','notif-badge-mobile'].forEach(function(id){var b=document.getElementById(id);if(b){b.innerText=c;b.classList.toggle('hidden',c===0);}});}
 
 // ═══════════════════════════════════════════════
@@ -407,24 +457,23 @@ function submitQuickLink(){
 // ═══════════════════════════════════════════════
 var calendar = null;
 
-// ═══════════════════════════════════════════════
-//  일정 및 할 일 (모바일 대응 + 창 폭 조절 저장 기능)
-// ═══════════════════════════════════════════════
-// ═══════════════════════════════════════════════
-//  일정 및 할 일 (5:5 고정 비율 + 드래그 위치 변경)
-// ═══════════════════════════════════════════════
+// 🌟 팀 업무 뷰 상태를 저장하는 전역 변수 추가 (맨 위쪽에 넣어도 되고 여기 둬도 됩니다)
+var teamTaskViewMode = 'list'; // 'list' 또는 'board'
+
 function renderCalendar() {
   var el = document.getElementById('tab-calendar');
   if(!el) return;
 
   var isMobile = window.innerWidth < 1024;
 
-  // 🌟 flex-1을 주어 두 창이 정확히 5:5(1:1) 비율을 나눠 가지도록 설정
   var myTodoHtml = `
     <div data-id="col-my-todo" class="flex-1 bg-white p-6 r35 card-shadow flex flex-col overflow-hidden min-w-[300px]">
-      <div class="drag-handle flex justify-between items-center mb-4 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition" title="잡고 끌어서 이동">
+      <div class="drag-handle flex justify-between items-center mb-4 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
         <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm pointer-events-none"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
-        <i class="ri-drag-move-fill text-gray-300 text-lg pointer-events-none"></i>
+        <div class="pointer-events-none flex gap-2 items-center">
+          <button onclick="extractWeeklyReport()" class="bg-gray-800 text-white text-[10px] px-3 py-1 r20 pointer-events-auto hover:bg-black transition"><i class="ri-file-copy-line"></i> 주간보고 추출</button>
+          <i class="ri-drag-move-fill text-gray-300 text-lg"></i>
+        </div>
       </div>
       <div class="flex gap-2 mb-4">
         <input type="text" id="my-todo-input" placeholder="@이름 멘션 가능..." class="flex-1 border p-2.5 r20 text-xs outline-none bg-gray-50" onkeypress="if(event.key==='Enter')addMyTodo()">
@@ -436,18 +485,20 @@ function renderCalendar() {
 
   var teamBoardHtml = `
     <div data-id="col-team-board" class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden min-w-[300px]">
-      <div class="drag-handle flex justify-between items-center mb-6 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition" title="잡고 끌어서 이동">
+      <div class="drag-handle flex justify-between items-center mb-6 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
         <h2 class="font-black text-gray-800 text-lg flex items-center pointer-events-none"><i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황</h2>
-        <div class="flex items-center gap-3 pointer-events-none">
-          <span class="text-[10px] bg-emerald-50 text-emerald-600 px-3 py-1 r20 font-bold border border-emerald-100">실시간 공유 중</span>
-          <i class="ri-drag-move-fill text-gray-300 text-xl"></i>
+        <div class="flex items-center gap-3 pointer-events-auto">
+          <div class="flex bg-gray-100 p-1 r20">
+            <button onclick="teamTaskViewMode='list'; renderTeamProjectBoard();" class="px-3 py-1 r20 text-xs font-bold ${teamTaskViewMode==='list'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}">리스트</button>
+            <button onclick="teamTaskViewMode='board'; renderTeamProjectBoard();" class="px-3 py-1 r20 text-xs font-bold ${teamTaskViewMode==='board'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}">보드</button>
+          </div>
+          <i class="ri-drag-move-fill text-gray-300 text-xl pointer-events-none"></i>
         </div>
       </div>
-      <div id="team-project-tracking-board" class="flex-1 overflow-y-auto space-y-8 pr-2 hide-scrollbar"></div>
+      <div id="team-project-tracking-board" class="flex-1 overflow-y-auto pr-2 hide-scrollbar flex flex-col"></div>
     </div>
   `;
 
-  // 브라우저 저장 위치(좌우 순서) 불러오기
   var savedOrder = JSON.parse(localStorage.getItem('calLayoutOrder')) || ['col-my-todo', 'col-team-board'];
   var blocks = { 'col-my-todo': myTodoHtml, 'col-team-board': teamBoardHtml };
   
@@ -468,7 +519,6 @@ function renderCalendar() {
   renderTeamProjectBoard();
   setupMention('my-todo-input');
 
-  // 드래그 앤 드롭 활성화
   setTimeout(function(){
     var container = document.getElementById('cal-drag-container');
     if(container && typeof Sortable !== 'undefined'){
@@ -482,6 +532,92 @@ function renderCalendar() {
     }
   }, 100);
 }
+
+// 🌟 리스트/보드 뷰를 모두 처리하는 함수
+function renderTeamProjectBoard() {
+  var el = document.getElementById('team-project-tracking-board');
+  if(!el) return;
+  
+  // 상태 토글 UI 강제 갱신
+  renderCalendar(); // 버튼 색상 갱신을 위해 통째로 다시 렌더링 (꼼수지만 확실함)
+  el = document.getElementById('team-project-tracking-board'); // 다시 잡기
+
+  var teamTasks = CACHE.tasks.filter(t => t.taskType === 'team');
+  
+  if(teamTasks.length === 0) {
+    el.innerHTML = '<div class="text-center py-20 text-gray-300 font-bold">등록된 팀별 업무가 없습니다.</div>';
+    return;
+  }
+
+  if (teamTaskViewMode === 'list') {
+    // 1. 아코디언 리스트 뷰
+    var groups = {};
+    teamTasks.forEach(t => { var p = t.project || '공통 업무'; if(!groups[p]) groups[p] = []; groups[p].push(t); });
+    el.innerHTML = Object.keys(groups).map(pName => {
+      var tasks = groups[pName].sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+      return `
+        <details open class="bg-gray-50/50 r35 border border-gray-100 mb-6 group transition-all duration-300 shrink-0">
+          <summary class="p-6 font-black text-gray-700 text-base cursor-pointer list-none flex justify-between items-center outline-none">
+            <div class="flex items-center"><i class="ri-folder-info-fill text-blue-400 mr-2 text-xl"></i> ${esc(pName)} <span class="ml-2 text-[10px] font-bold text-gray-500 bg-gray-200 px-2 py-0.5 r20">${tasks.length}</span></div>
+            <i class="ri-arrow-down-s-line text-gray-400 text-xl group-open:rotate-180 transition-transform duration-300"></i>
+          </summary>
+          <div class="px-6 pb-6 pt-2 space-y-3">
+            ${tasks.map(t => {
+              var cCount = Object.values(CACHE.comments).filter(c => c.targetId === t.id).length;
+              var doneCount = (t.checklist||[]).filter(x=>x.done).length;
+              var totalCount = (t.checklist||[]).length;
+              return `
+                <div onclick="openTaskDetail('${t.id}')" class="bg-white p-5 r24 border border-gray-200 hover:border-blue-400 cursor-pointer transition group">
+                  <div class="flex justify-between items-start mb-2 gap-4"><p class="text-sm font-bold text-gray-800 flex-1">${esc(t.title)}</p>${statusBadge(t.status === 'Done' ? '완료' : '진행중')}</div>
+                  <div class="flex justify-between items-center mt-4"><div class="flex items-center gap-2"><span class="text-[10px] text-gray-500 font-bold">${getMemberName(t.creator)}</span>${totalCount > 0 ? `<span class="text-[9px] bg-violet-50 text-violet-600 px-2 py-0.5 r10 font-bold">체크리스트 ${doneCount}/${totalCount}</span>` : ''}</div><div class="text-[10px] text-gray-400"><i class="ri-chat-3-line"></i> ${cCount}</div></div>
+                </div>`;
+            }).join('')}
+          </div>
+        </details>`;
+    }).join('');
+  } else {
+    // 2. 칸반 보드 뷰
+    var statuses = ['Todo', 'In Progress', 'Done'];
+    el.innerHTML = `<div class="flex gap-4 h-full min-w-max pb-4">` + statuses.map(s => {
+      var tasks = teamTasks.filter(t => t.status === s).sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+      var badgeColor = s === 'Done' ? 'bg-green-100 text-green-700' : s === 'In Progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600';
+      return `
+        <div class="w-64 flex flex-col bg-gray-50/50 r35 p-4 border border-gray-100 shrink-0">
+          <div class="flex items-center justify-between mb-4 px-2">
+            <span class="text-xs font-black uppercase tracking-wider ${badgeColor} px-2 py-1 r20">${s}</span>
+            <span class="text-xs font-bold text-gray-400">${tasks.length}</span>
+          </div>
+          <div id="team-board-${s}" class="flex-1 space-y-3 overflow-y-auto hide-scrollbar min-h-[100px]">
+            ${tasks.map(t => `<div data-id="${t.id}" onclick="openTaskDetail('${t.id}')" class="bg-white p-4 r20 border border-gray-200 hover:border-blue-400 cursor-pointer shadow-sm group"><p class="text-[10px] text-blue-500 font-bold mb-1 truncate">${t.project}</p><p class="text-xs font-bold text-gray-800 mb-3">${esc(t.title)}</p><div class="flex justify-between items-center"><div class="flex">${avatarHtml(t.assignees, 3)}</div><span class="text-[10px] text-gray-400"><i class="ri-chat-3-line"></i> ${Object.values(CACHE.comments).filter(c => c.targetId === t.id).length}</span></div></div>`).join('')}
+          </div>
+        </div>`;
+    }).join('') + `</div>`;
+
+    // 보드 드래그 앤 드롭 활성화
+    setTimeout(() => {
+      statuses.forEach(s => {
+        var colEl = document.getElementById('team-board-'+s);
+        if(colEl) {
+          new Sortable(colEl, {
+            group: 'team-tasks', animation: 150,
+            onEnd: function(evt) {
+              var newStatus = evt.to.id.replace('team-board-', '');
+              var taskId = evt.item.getAttribute('data-id');
+              var t = CACHE.tasks.find(x => x.id === taskId);
+              if(t && t.status !== newStatus) {
+                t.status = newStatus;
+                FB.patch('tasks/'+taskId, {status: newStatus});
+                showToast("상태가 [" + newStatus + "]로 변경되었습니다.");
+                renderCalendar(); // UI 재조정
+              }
+            }
+          });
+        }
+      });
+    }, 200);
+  }
+}
+
 
 // 하위 업무 추가 함수
 function addSubTask(taskId) {
@@ -1051,25 +1187,89 @@ function confirmDeleteCS(id){
 function initMonthFilters(){var now=new Date(),y=now.getFullYear(),m=now.getMonth();var os='<option value="all">전체</option>';for(var i=0;i<18;i++){var ty=y,tm=m-i;while(tm<0){tm+=12;ty--;}var v=ty+'-'+pad(tm+1);os+='<option value="'+v+'">'+ty+'년 '+(tm+1)+'월</option>';}['appr-month-filter','leave-month-filter','admin-export-month'].forEach(function(id){var el=document.getElementById(id);if(el){el.innerHTML=os;el.value=y+'-'+pad(m+1);}});}
 function matchMonth(d,f){if(f==='all')return true;if(!d)return false;var s=String(d);if(!isNaN(s)&&s.length>10){var dt=new Date(Number(s));s=dt.getFullYear()+'-'+pad(dt.getMonth()+1);}return s.indexOf(f)===0;}
 
-function renderApproval(){
-  var el=document.getElementById('tab-approval');
-  if(!el.querySelector('#appr-my-drafts')){
-    el.innerHTML='<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-3"><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-bank-card-fill text-gray-800 mr-2"></i> 지출 및 결재</h1><div class="flex items-center gap-4 flex-wrap"><select id="appr-month-filter" class="border p-3 r35 text-sm font-bold outline-none bg-white card-shadow px-6" onchange="renderApproval()"></select><button onclick="openApprovalModal()" class="bg-gray-900 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-black transition">+ 지출결의서 작성</button></div></div><div class="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12"><div><h2 class="text-xl font-bold mb-6 text-gray-700">내가 올린 결재</h2><div id="appr-my-drafts" class="space-y-4"></div></div><div><h2 class="text-xl font-bold mb-6 text-blue-600">내게 온 결재</h2><div id="appr-to-me" class="space-y-4"></div></div></div>';
+function renderApproval() {
+  var el = document.getElementById('tab-approval');
+  // 초기 뼈대 생성 (필터 UI 포함)
+  if (!el.querySelector('#appr-filter-area')) {
+    el.innerHTML = `
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-3">
+        <h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-bank-card-fill mr-2"></i> 지출 및 결재</h1>
+        <button onclick="openApprovalModal()" class="bg-gray-900 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-black transition">+ 지출결의서 작성</button>
+      </div>
+      
+      <div id="appr-filter-area" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 bg-white p-5 r35 card-shadow border border-gray-100">
+        <div><label class="block text-[10px] font-black text-gray-400 mb-1 ml-1">대상 월</label><select id="appr-month-filter" class="w-full border p-2.5 r20 text-xs font-bold outline-none bg-gray-50" onchange="renderApproval()"></select></div>
+        <div><label class="block text-[10px] font-black text-gray-400 mb-1 ml-1">계정과목</label><select id="appr-cat-filter" class="w-full border p-2.5 r20 text-xs font-bold outline-none bg-gray-50" onchange="renderApproval()"><option value="all">전체 과목</option><option>복리후생비(식대/간식)</option><option>여비교통비(출장/유류)</option><option>소모품비(비품/사무용품)</option><option>지급수수료(구독/이체)</option><option>접대비(외부미팅/선물)</option><option>기타</option></select></div>
+        <div><label class="block text-[10px] font-black text-gray-400 mb-1 ml-1">상태</label><select id="appr-status-filter" class="w-full border p-2.5 r20 text-xs font-bold outline-none bg-gray-50" onchange="renderApproval()"><option value="all">전체 상태</option><option>대기</option><option>최종 승인</option><option>반려</option></select></div>
+        <div><label class="block text-[10px] font-black text-gray-400 mb-1 ml-1">기안자 검색</label><input type="text" id="appr-user-search" class="w-full border p-2.5 r20 text-xs outline-none bg-gray-50" placeholder="이름 입력..." oninput="renderApproval()"></div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div><h2 class="text-xl font-bold mb-6 text-gray-700">지출 내역 리스트</h2><div id="appr-list-main" class="space-y-4"></div></div>
+        <div><h2 class="text-xl font-bold mb-6 text-blue-600">회계 요약 (필터 결과)</h2><div id="appr-summary-card" class="bg-blue-600 text-white p-8 r35 card-shadow flex flex-col justify-center min-h-[200px]"></div></div>
+      </div>`;
     initMonthFilters();
   }
-  var f=document.getElementById('appr-month-filter')?document.getElementById('appr-month-filter').value:'all';
-  var m2='',t2='';
-  CACHE.approval.filter(function(d){return matchMonth(d.dateCreated,f);}).forEach(function(d){
-    // 🌟 긴급 뱃지 렌더링 로직 추가
-    var uBadge = d.isUrgent ? '<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black ml-2 align-middle">긴급</span>' : '';
-    var c='<div class="p-6 md:p-7 border r35 bg-white card-shadow mb-5 card-hover cursor-pointer border-transparent hover:border-blue-300" onclick="openApprovalDetail(\''+d.id+'\')"><div class="flex justify-between items-center mb-3 gap-2"><h3 class="font-black text-base md:text-lg text-gray-800 truncate">'+esc(d.reason)+uBadge+'</h3>'+statusBadge(d.status)+'</div><div class="flex items-end justify-between bg-gray-50 p-4 r24 mb-3"><div class="text-sm font-bold text-gray-600">'+esc(d.bank)+'</div><b class="text-green-600 text-xl md:text-2xl">₩'+Number(d.amount).toLocaleString()+'</b></div><p class="text-xs text-gray-400 font-bold">기안: '+d.drafterName+' · '+d.date+'</p></div>';
-    
-    if((d.drafter||'').toLowerCase()===USER.email)m2+=c;
-    if((d.approver1||'').toLowerCase()===USER.email||(d.approver2||'').toLowerCase()===USER.email)t2+=c;
+
+  var fMonth = document.getElementById('appr-month-filter').value;
+  var fCat = document.getElementById('appr-cat-filter').value;
+  var fStatus = document.getElementById('appr-status-filter').value;
+  var fUser = document.getElementById('appr-user-search').value.toLowerCase();
+
+  var filtered = CACHE.approval.filter(function(d) {
+    return matchMonth(d.dateCreated, fMonth) &&
+           (fCat === 'all' || d.reason === fCat) &&
+           (fStatus === 'all' || d.status === fStatus) &&
+           (d.drafterName.toLowerCase().includes(fUser));
   });
-  var md=document.getElementById('appr-my-drafts'),td=document.getElementById('appr-to-me');
-  if(md)md.innerHTML=m2||'<p class="text-sm text-gray-400 py-10 text-center font-bold">내역 없음</p>';
-  if(td)td.innerHTML=t2||'<p class="text-sm text-gray-400 py-10 text-center font-bold">내역 없음</p>';
+
+  var totalAmount = filtered.reduce((acc, cur) => acc + Number(cur.amount || 0), 0);
+
+  // 리스트 렌더링
+  var listEl = document.getElementById('appr-list-main');
+  listEl.innerHTML = filtered.length === 0 ? '<p class="text-sm text-gray-400 py-10 text-center font-bold">내역 없음</p>' : filtered.map(d => {
+    var uBadge = d.isUrgent ? '<span class="text-[9px] bg-red-500 text-white px-1.5 py-0.5 r10 font-black ml-1">긴급</span>' : '';
+    return `
+      <div class="p-5 border r24 bg-white card-shadow card-hover cursor-pointer border-transparent hover:border-blue-300 relative group" onclick="openApprovalDetail('${d.id}')">
+        <div class="flex justify-between items-center mb-2">
+          <h3 class="font-black text-sm text-gray-800 truncate">${esc(d.reason)}${uBadge}</h3>
+          ${statusBadge(d.status)}
+        </div>
+        <div class="text-lg font-black text-emerald-600 mb-1">₩${Number(d.amount).toLocaleString()}</div>
+        <p class="text-[10px] text-gray-400 font-bold">기안: ${d.drafterName} · ${fmtDT(d.dateCreated)}</p>
+        <button onclick="event.stopPropagation(); copyApprovalData('${d.id}')" class="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 bg-blue-50 text-blue-600 text-[10px] px-3 py-1.5 r20 font-bold border border-blue-100 transition">복사해서 새로 작성</button>
+      </div>`;
+  }).join('');
+
+  // 요약 카드 렌더링
+  document.getElementById('appr-summary-card').innerHTML = `
+    <p class="text-blue-100 text-sm font-bold mb-2 uppercase tracking-widest">Selected Total</p>
+    <h3 class="text-4xl md:text-5xl font-black mb-4">₩${totalAmount.toLocaleString()}</h3>
+    <p class="text-blue-200 text-xs font-bold leading-relaxed">선택된 조건에 따른 총 지출액입니다.<br>검색 결과 총 ${filtered.length}건이 집계되었습니다.</p>
+  `;
+}
+
+// 🌟 복사 기능 함수 (새로 추가)
+function copyApprovalData(id) {
+  var d = CACHE.approval.find(x => x.id === id);
+  if(!d) return;
+  openApprovalModal(); // 모달 먼저 열고
+  setTimeout(() => {
+    // 값을 슥슥 채워넣기 (ID와 날짜는 제외)
+    var row = document.querySelector('.appr-item-row');
+    if(row) {
+      row.querySelector('.appr-reason-select').value = d.reason.includes('(') ? d.reason : '기타';
+      if(row.querySelector('.appr-reason-select').value === '기타') {
+        row.querySelector('.appr-reason-custom').classList.remove('hidden');
+        row.querySelector('.appr-reason-custom').value = d.reason;
+      }
+      row.querySelector('.appr-detail').value = d.detail || '';
+      row.querySelector('.appr-bank').value = d.bank || '';
+      row.querySelector('.appr-account').value = d.account || '';
+      row.querySelector('.appr-amount').value = d.amount || '';
+    }
+    showToast("기존 내역을 복사해왔습니다. 내용을 확인 후 제출하세요!");
+  }, 300);
 }
 
 function openApprovalModal(){
@@ -1346,22 +1546,24 @@ function confirmDeleteVault(id){
 
 
 /*═══════════ 위키 (Quill 에디터 적용) ═══════════*/
-var quillEditor = null;
-
+// 🌟 공통 에디터 툴바 옵션 (코드 하이라이팅 기능 추가!)
 var editorOptions = {
   theme: 'snow',
   modules: {
+    syntax: true, // 👈 코드를 예쁘게 칠해주는 핵심 스위치
     toolbar: [
       [{ 'header': [1, 2, 3, false] }],
       ['bold', 'italic', 'underline', 'strike'],
-      ['blockquote', 'code-block'],
+      ['blockquote', 'code-block'], // code-block 버튼 활성화됨
       [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      ['link'] // 이미지 버튼은 스토리지 폭발 방지를 위해 제외
+      ['link']
     ]
   },
   placeholder: '내용을 자세히 작성해주세요...'
 };
+var quillEditor = null;
 var devQuillEditor = null;
+
 
 function renderWiki(){var el=document.getElementById('tab-wiki');if(!el.querySelector('#wiki-search-input')){el.innerHTML='<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-3"><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-book-read-fill text-gray-800 mr-2"></i> 사내 위키</h1><div class="flex items-center gap-3 flex-wrap"><input type="text" id="wiki-search-input" oninput="filterWikiUI()" placeholder="검색..." class="px-4 py-3 border r35 text-sm outline-none w-56 bg-white card-shadow"><button onclick="openWikiModal()" class="bg-gray-800 text-white px-6 py-3 r35 text-sm font-bold shadow-lg">+ 새 문서</button></div></div><div id="wiki-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>';}filterWikiUI();}
 
@@ -1651,28 +1853,37 @@ function toggleDarkMode(){
   }
 }
 
-/*═══════════ 실시간 팝업 알림 (Real-time) ═══════════*/
-var isInitialLoad = true;
 function setupRealtimeListeners() {
   // 1. 코멘트(댓글)에서 나를 멘션했을 때
   db.ref('comments').on('child_added', function(snap) {
-    if(isInitialLoad) return; // 첫 로딩 때 쏟아지는 과거 데이터는 무시
+    if(isInitialLoad) return;
     var c = snap.val();
     if(c.authorName !== USER.name && c.content.indexOf('@'+USER.name) > -1) {
-      showToast("🔔 " + c.authorName + "님이 코멘트에서 회원님을 호출했습니다.");
+      showToast("🔔 " + c.authorName + "님이 회원님을 호출했습니다.");
+      sendNativeNotification("워크스페이스 알림", c.authorName + "님이 코멘트에서 호출했습니다.");
       refreshNotifBadge(); 
     }
   });
 
-  // 2. 내 휴가 신청 상태가 변경되었을 때
+  // 2. 내 휴가/결재 상태가 변경되었을 때
   db.ref('leaves').on('child_changed', function(snap) {
     var l = snap.val();
-    if(l.applicant === USER.email && (l.status === '승인' || l.status === '반려')) {
-      showToast("🔔 내 휴가 신청이 [" + l.status + "] 처리되었습니다.");
+    if(l.applicant === USER.email) {
+      showToast("🔔 휴가 신청 상태 변경: [" + l.status + "]");
+      sendNativeNotification("결재 알림", "내 휴가 신청이 [" + l.status + "] 처리되었습니다.");
     }
   });
   
-  // 초기 데이터가 전부 불러와진 후(3초 뒤)부터 알림 활성화
+  // 3. 결재 건이 나에게 왔을 때 (추가)
+  db.ref('approvals').on('child_added', function(snap) {
+    if(isInitialLoad) return;
+    var d = snap.val();
+    if((d.approver1 === USER.email && d.status === '대기') || (d.approver2 === USER.email && d.status === '1차 승인')) {
+      showToast("📝 새 결재 대기 건이 도착했습니다.");
+      sendNativeNotification("결재 대기", d.drafterName + "님이 결재를 요청했습니다.");
+    }
+  });
+
   setTimeout(function(){ isInitialLoad = false; }, 3000);
 }
 
@@ -1747,28 +1958,56 @@ function renderTeamCalendar() {
 // ═══════════════════════════════════════════════
 
 
-// 나의 할 일 (나만 보임 -> 멘션된 사람도 같이 보임)
+// [수정됨] 나의 할 일 (드래그 앤 드롭 순서 변경 및 저장 기능 추가)
 function renderMyTodo(){
-  var el=document.getElementById('my-todo-list');if(!el)return;
+  var el = document.getElementById('my-todo-list');
+  if(!el) return;
   
-  var myTasks=CACHE.tasks.filter(function(t){
+  // 🌟 (a.order || 0) - (b.order || 0) 를 추가하여 드래그한 순서대로 정렬
+  var myTasks = CACHE.tasks.filter(function(t){
     return t.taskType==='personal' && (t.assignees||'').toLowerCase().indexOf(USER.email.toLowerCase()) > -1;
-  }).sort(function(a,b){return(a.status==='Done'?1:0)-(b.status==='Done'?1:0);});
+  }).sort(function(a,b){
+    return (a.status==='Done'?1:0) - (b.status==='Done'?1:0) || (a.order||0) - (b.order||0) || (b.timestamp||0) - (a.timestamp||0);
+  });
   
-  el.innerHTML=myTasks.length===0?'<p class="text-xs text-gray-400 font-bold text-center py-4">할 일이 없습니다.</p>':myTasks.map(function(t){
-    // 🌟 내가 만든게 아니면 누가 멘션했는지 출처 표시
+  if(myTasks.length === 0){
+    el.innerHTML = '<p class="text-xs text-gray-400 font-bold text-center py-4">할 일이 없습니다.</p>';
+    return;
+  }
+
+  el.innerHTML = myTasks.map(function(t){
     var isCreator = (t.creator||'').toLowerCase() === USER.email.toLowerCase();
     var fromBadge = isCreator ? '' : `<span class="ml-2 text-[9px] bg-blue-50 text-blue-500 px-1.5 py-0.5 r10 font-bold border border-blue-100">by ${getMemberName(t.creator)}</span>`;
-    
-    // 🌟 내가 만든 것만 삭제 버튼 표시
     var delBtn = isCreator ? `<button onclick="deleteTodo('${t.id}')" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition"><i class="ri-delete-bin-line"></i></button>` : '';
 
-    return `<div class="flex items-center gap-3 p-3 bg-gray-50 r20 group hover:bg-gray-100 transition">
+    // 🌟 data-id 부여 및 손잡이(todo-drag-handle) 아이콘 추가
+    return `<div data-id="${t.id}" class="flex items-center gap-3 p-3 bg-gray-50 r20 group hover:bg-gray-100 transition">
+      <i class="ri-draggable text-gray-300 hover:text-gray-500 cursor-move todo-drag-handle text-lg"></i>
       <input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0" ${t.status==='Done'?'checked':''} onchange="toggleTodo('${t.id}',this.checked)">
       <span class="flex-1 text-sm font-bold ${t.status==='Done'?'line-through text-gray-400':'text-gray-700'}">${esc(t.title)}${fromBadge}</span>
       ${delBtn}
     </div>`;
   }).join('');
+
+  // 🌟 SortableJS를 이용한 드래그 앤 드롭 활성화 및 Firebase 순서 업데이트
+  if(window.myTodoSortable) window.myTodoSortable.destroy(); // 기존 인스턴스 초기화
+  window.myTodoSortable = new Sortable(el, {
+    handle: '.todo-drag-handle', // 손잡이 부분만 잡고 끌 수 있게 설정
+    animation: 150,
+    ghostClass: 'opacity-50', // 드래그 중인 항목 반투명 처리
+    onEnd: function(evt) {
+      // 드래그가 끝난 후, 바뀐 순서(index)를 파이어베이스에 각각 저장
+      var items = Array.from(evt.to.children);
+      items.forEach(function(item, idx) {
+        var id = item.getAttribute('data-id');
+        var task = CACHE.tasks.find(x => x.id === id);
+        if(task && task.order !== idx) {
+          task.order = idx;
+          FB.patch('tasks/' + id, { order: idx }); // 조용히 서버만 업데이트
+        }
+      });
+    }
+  });
 }
 
 function addMyTodo(){
@@ -1826,54 +2065,13 @@ function deleteTodo(id){
   });
 }
 
-function renderTeamProjectBoard() {
-  var el = document.getElementById('team-project-tracking-board');
-  if(!el) return;
-  var teamTasks = CACHE.tasks.filter(t => t.taskType === 'team');
-  var groups = {};
-  teamTasks.forEach(t => { var p = t.project || '공통 업무'; if(!groups[p]) groups[p] = []; groups[p].push(t); });
-
-  if(Object.keys(groups).length === 0) {
-    el.innerHTML = '<div class="text-center py-20 text-gray-300 font-bold">등록된 팀별 업무가 없습니다.</div>';
-    return;
-  }
-
-  el.innerHTML = Object.keys(groups).map(pName => {
-    var tasks = groups[pName].sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
-    return `
-      <div class="bg-gray-50/50 r35 p-6 border border-gray-100 mb-6">
-        <h3 class="font-black text-gray-700 text-base mb-4 pb-2 border-b"><i class="ri-folder-info-fill text-blue-400 mr-2"></i> ${esc(pName)}</h3>
-        <div class="space-y-3">
-          ${tasks.map(t => {
-            var cCount = Object.values(CACHE.comments).filter(c => c.targetId === t.id).length;
-            var doneCount = (t.checklist||[]).filter(x=>x.done).length;
-            var totalCount = (t.checklist||[]).length;
-            return `
-              <div onclick="openTaskDetail('${t.id}')" class="bg-white p-5 r24 border border-gray-200 hover:border-blue-400 cursor-pointer transition group">
-                <div class="flex justify-between items-start mb-2 gap-4">
-                  <p class="text-sm font-bold text-gray-800 flex-1">${esc(t.title)}</p>
-                  ${statusBadge(t.status === 'Done' ? '완료' : '진행중')}
-                </div>
-                <div class="flex justify-between items-center mt-4">
-                  <div class="flex items-center gap-2">
-                    <span class="text-[10px] text-gray-500 font-bold">${getMemberName(t.creator)}</span>
-                    ${totalCount > 0 ? `<span class="text-[9px] bg-violet-50 text-violet-600 px-2 py-0.5 r10 font-bold">체크리스트 ${doneCount}/${totalCount}</span>` : ''}
-                  </div>
-                  <div class="text-[10px] text-gray-400"><i class="ri-chat-3-line"></i> ${cCount} 팔로업</div>
-                </div>
-              </div>`;
-          }).join('')}
-        </div>
-      </div>`;
-  }).join('');
-}
-
 // [수정됨] 업무 상세창 (이미지 갤러리 및 업로드 추가)
+// 🌟 업무 상세 모달 (댓글 사진 첨부 지원)
 function openTaskDetail(id) {
   var t = CACHE.tasks.find(x => x.id === id);
   if(!t) return;
   if(!t.checklist) t.checklist = [];
-  if(!t.images) t.images = []; // 이미지 배열
+  if(!t.images) t.images = [];
   var comments = Object.values(CACHE.comments).filter(c => c.targetId === id).sort((a,b) => new Date(a.date) - new Date(b.date));
 
   var html = `
@@ -1881,10 +2079,7 @@ function openTaskDetail(id) {
       <button onclick="closeModal('task-detail-modal')" class="absolute top-6 right-6 text-gray-400 hover:text-black z-10"><i class="ri-close-line text-3xl"></i></button>
       
       <div class="flex-1 p-8 md:p-10 border-r border-gray-100 overflow-y-auto">
-        <div class="flex items-center gap-2 mb-4">
-          <span class="text-[10px] font-black px-2 py-1 r20 bg-blue-100 text-blue-700">${t.project}</span>
-          ${statusBadge(t.status === 'Done' ? '전체완료' : '진행중')}
-        </div>
+        <div class="flex items-center gap-2 mb-4"><span class="text-[10px] font-black px-2 py-1 r20 bg-blue-100 text-blue-700">${t.project}</span>${statusBadge(t.status === 'Done' ? '전체완료' : '진행중')}</div>
         <h2 class="text-2xl font-black text-gray-900 mb-6">${esc(t.title)}</h2>
         
         <div class="mb-8">
@@ -1892,8 +2087,7 @@ function openTaskDetail(id) {
           <div id="task-checklist-area" class="space-y-2 mb-4">
             ${t.checklist.map((item, idx) => `
               <div class="flex items-center gap-3 p-3 ${item.done ? 'bg-gray-50' : 'bg-white border border-gray-100'} r20 group">
-                <input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer" ${item.done ? 'checked' : ''} 
-                       onchange="toggleSubTask('${t.id}', ${idx}, this.checked)">
+                <input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer" ${item.done ? 'checked' : ''} onchange="toggleSubTask('${t.id}', ${idx}, this.checked)">
                 <span class="flex-1 text-sm ${item.done ? 'line-through text-gray-400' : 'font-bold text-gray-700'}">${renderMentionText(item.text)}</span>
                 <span class="text-[9px] text-gray-300 font-bold">${item.completedBy ? getMemberName(item.completedBy) + ' 완료' : ''}</span>
               </div>
@@ -1908,22 +2102,15 @@ function openTaskDetail(id) {
         <div class="mb-8 border-t pt-6">
           <div class="flex justify-between items-center mb-4">
             <h3 class="text-sm font-black text-gray-800 flex items-center gap-2"><i class="ri-image-add-fill text-blue-500"></i> 첨부 이미지</h3>
-            <label class="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 r20 text-xs font-bold transition">
-              + 사진 올리기
-              <input type="file" class="hidden" accept="image/*" onchange="handleTaskImage(this, '${t.id}')">
-            </label>
+            <label class="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 r20 text-xs font-bold transition">+ 사진 올리기<input type="file" class="hidden" accept="image/*" onchange="handleTaskImage(this, '${t.id}')"></label>
           </div>
           <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-            ${t.images.length===0 ? '<p class="text-xs text-gray-400 col-span-3 py-4">첨부된 사진이 없습니다.</p>' : t.images.map(img => `
-              <a href="${img}" target="_blank" class="block aspect-video bg-gray-100 r20 overflow-hidden border border-gray-200 hover:border-blue-400 transition">
-                <img src="${img}" class="w-full h-full object-cover object-center">
-              </a>`).join('')}
+            ${t.images.length===0 ? '<p class="text-xs text-gray-400 col-span-3 py-4">첨부된 사진이 없습니다.</p>' : t.images.map(img => `<a href="${img}" target="_blank" class="block aspect-video bg-gray-100 r20 overflow-hidden border border-gray-200 hover:border-blue-400 transition"><img src="${img}" class="w-full h-full object-cover object-center"></a>`).join('')}
           </div>
         </div>
 
         <div class="flex justify-between items-center text-[11px] text-gray-400 border-t pt-6">
-          <span>최초 등록: ${getMemberName(t.creator)}</span>
-          <button onclick="confirmDeleteTask('${t.id}')" class="text-red-400 hover:underline">업무 삭제</button>
+          <span>최초 등록: ${getMemberName(t.creator)}</span><button onclick="confirmDeleteTask('${t.id}')" class="text-red-400 hover:underline">업무 삭제</button>
         </div>
       </div>
 
@@ -1933,19 +2120,52 @@ function openTaskDetail(id) {
           ${comments.map(c => `
             <div class="bg-white p-4 r20 shadow-sm border border-gray-100">
               <div class="flex justify-between items-center mb-1"><span class="font-black text-[10px] text-gray-800">${c.authorName}</span><span class="text-[9px] text-gray-400">${c.date}</span></div>
+              ${c.fileUrl ? `<a href="${c.fileUrl}" target="_blank" class="block mb-2"><img src="${c.fileUrl}" class="w-full h-24 object-cover r10 border border-gray-200 hover:opacity-80 transition"></a>` : ''}
               <p class="text-xs text-gray-600 leading-relaxed">${renderMentionText(c.content)}</p>
             </div>`).join('')}
         </div>
-        <div class="relative">
-          <textarea id="task-cmt-in" rows="2" placeholder="@이름 호출..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-blue-400 shadow-sm bg-white"></textarea>
-          <button onclick="submitTaskComment('${t.id}')" class="absolute bottom-3 right-3 bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center shadow-lg"><i class="ri-send-plane-fill text-xs"></i></button>
+        
+        <div class="relative bg-white p-2 r24 border shadow-sm focus-within:border-blue-400">
+          <textarea id="task-cmt-in" rows="2" placeholder="@이름 호출, 혹은 텍스트 입력..." class="w-full p-2 text-sm outline-none resize-none bg-transparent"></textarea>
+          <div class="flex justify-between items-center mt-1 border-t border-gray-50 pt-2 px-1">
+            <label class="cursor-pointer text-gray-400 hover:text-blue-500 transition px-2" title="사진 첨부 및 전송">
+              <i class="ri-image-add-line text-lg"></i>
+              <input type="file" class="hidden" accept="image/*" onchange="uploadTaskCommentImage(this, '${t.id}')">
+            </label>
+            <button onclick="submitTaskComment('${t.id}')" class="bg-blue-600 text-white px-4 py-1.5 r20 text-xs font-bold shadow-md hover:bg-blue-700 transition">등록</button>
+          </div>
         </div>
+        
       </div>
     </div>
   `;
   renderModalRoot('task-detail-modal', html);
   openModal('task-detail-modal');
   setTimeout(() => { setupMention('task-cmt-in'); setupMention('new-subtask-in'); }, 200);
+}
+
+// 🌟 댓글 전용 사진 업로드 함수
+function uploadTaskCommentImage(input, taskId) {
+  if(!input.files || !input.files[0]) return;
+  showToast("⏳ 사진을 압축하여 전송 중...");
+  
+  compressAndUploadImage(input.files[0], 'comment_images', function(url){
+    var inp = document.getElementById('task-cmt-in');
+    var msg = inp ? inp.value.trim() : '';
+    
+    var cId = genId();
+    var c = {
+      targetId: taskId, email: USER.email, authorName: USER.name, 
+      content: msg || '(사진 첨부)', date: nowFmt(), fileUrl: url // 🌟 fileUrl 속성 추가
+    };
+    
+    CACHE.comments[cId] = c;
+    FB.set('comments/' + cId, c);
+    
+    if(inp) inp.value = '';
+    openTaskDetail(taskId); // 화면 갱신
+    showToast("✅ 사진 댓글이 등록되었습니다.");
+  });
 }
 
 // 📸 전사 업무 - 이미지 업로드 처리 함수
@@ -2306,6 +2526,77 @@ function deleteProduct(id) {
     renderProducts();
     showToast("삭제되었습니다.");
   });
+}
+
+// 🌟 주간 업무 보고 자동 추출기
+function extractWeeklyReport() {
+  var lastWeek = Date.now() - (7 * 24 * 60 * 60 * 1000); // 7일 전 타임스탬프
+  
+  // 지난 7일 이내에 '완료(Done)' 처리된 내 업무 찾기
+  var myDoneTasks = CACHE.tasks.filter(function(t) {
+    var isMine = (t.assignees||'').toLowerCase().indexOf(USER.email.toLowerCase()) > -1;
+    var isRecent = (t.timestamp || 0) > lastWeek; // 이상적으로는 완료일을 찍어야 하지만 임시로 생성일/수정일 기준
+    return isMine && t.status === 'Done' && isRecent;
+  });
+
+  if(myDoneTasks.length === 0) {
+    return showToast("최근 7일 내에 완료 처리된 업무가 없습니다.");
+  }
+
+  // 텍스트 포맷팅
+  var reportText = "[주간 업무 완료 보고 - " + USER.name + "]\n\n";
+  
+  var personal = myDoneTasks.filter(t => t.taskType === 'personal');
+  var team = myDoneTasks.filter(t => t.taskType === 'team');
+
+  if(team.length > 0) {
+    reportText += "■ 전사 프로젝트 업무\n";
+    team.forEach(t => { reportText += "- [" + (t.project||'공통') + "] " + t.title + "\n"; });
+    reportText += "\n";
+  }
+
+  if(personal.length > 0) {
+    reportText += "■ 개인 할 일\n";
+    personal.forEach(t => { reportText += "- " + t.title + "\n"; });
+  }
+
+  // 클립보드에 복사
+  navigator.clipboard.writeText(reportText).then(function() {
+    showToast("✅ 주간 보고서가 복사되었습니다! 메신저나 문서에 붙여넣기 하세요.");
+  }).catch(function() {
+    showToast("복사에 실패했습니다. 권한을 확인해주세요.");
+  });
+}
+
+function markNotifAsRead(notifId, originalAction) {
+  // 1. 로컬 스토리지에 저장 (서버 데이터까지 건드리지 않고 브라우저에서 즉시 사라지게 함)
+  var readNotifs = JSON.parse(localStorage.getItem('read_notifs_' + USER.email)) || [];
+  if(!readNotifs.includes(notifId)) {
+    readNotifs.push(notifId);
+    localStorage.setItem('read_notifs_' + USER.email, JSON.stringify(readNotifs));
+  }
+  
+  // 2. 모달 닫기 및 알림 뱃지 갱신
+  closeModal('notif-modal');
+  refreshNotifBadge();
+  updateBadges();
+
+  // 3. 원래 하려던 행동(페이지 이동 등) 수행
+  if(originalAction) originalAction();
+}
+// 🌟 브라우저 네이티브 알림 요청 및 실행
+function sendNativeNotification(title, body) {
+  if (!("Notification" in window)) return;
+  
+  if (Notification.permission === "granted") {
+    new Notification(title, { body: body, icon: 'https://i.imgur.com/gzXQ8nD.png' });
+  } else if (Notification.permission !== "denied") {
+    Notification.requestPermission().then(permission => {
+      if (permission === "granted") {
+        new Notification(title, { body: body, icon: 'https://i.imgur.com/gzXQ8nD.png' });
+      }
+    });
+  }
 }
 
 // 끝
