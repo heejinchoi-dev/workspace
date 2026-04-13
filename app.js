@@ -3,7 +3,9 @@
 var firebaseConfig={apiKey:"AIzaSyCmeGcCHO5K-jKu4UApMo_CxLhhDuzVLlc",authDomain:"circularlabs-gw.firebaseapp.com",databaseURL:"https://circularlabs-gw-default-rtdb.asia-southeast1.firebasedatabase.app",projectId:"circularlabs-gw",storageBucket:"circularlabs-gw.firebasestorage.app",messagingSenderId:"995341939477",appId:"1:995341939477:web:543ebebe0a2af4ca14ef1c"};
 firebase.initializeApp(firebaseConfig);var auth=firebase.auth(),db=firebase.database();
 /*═══════════ Global ═══════════*/
-var USER=null,CACHE={tasks:[],devProjects:[],sprints:[],crm:[],cs:[],schedules:[],approval:[],leaves:[],vault:[],comments:{},members:[],wiki:[],leaveInfo:{total:15,used:0,remain:15}};
+// 기존 코드: var USER=null,CACHE={tasks:[], ... ,wiki:[],leaveInfo:{total:15,used:0,remain:15}};
+// 아래처럼 변경 (products:[] 추가)
+var USER=null,CACHE={tasks:[],devProjects:[],sprints:[],crm:[],cs:[],schedules:[],approval:[],leaves:[],vault:[],comments:{},members:[],wiki:[],products:[],leaveInfo:{total:15,used:0,remain:15}};
 var devView='board',confirmCb=null,chartCRM=null,chartTasks=null,activeNoticeId=null;
 /*═══════════ Util ═══════════*/
 function esc(s) {
@@ -186,6 +188,7 @@ function processData(results){
   CACHE.approval=parseNode(results.approvals).filter(function(a){return !a.isDeleted;});
   CACHE.leaves=parseNode(results.leaves).filter(function(l){return !l.isDeleted;});
   CACHE.wiki=parseNode(results.wiki).filter(function(w){return !w.isDeleted;});
+  CACHE.products=parseNode(results.products).filter(function(p){return !p.isDeleted;});
   CACHE.quickLinks = parseNode(results.quickLinks); 
   CACHE.comments=results.comments||{};
   
@@ -232,6 +235,7 @@ function showTab(name){
     home:renderDashboard,
     calendar:renderCalendar,
     teamcal:renderTeamCalendar, // 전사 캘린더
+    products:renderProducts,
     dev:function(){setDevView(devView);},
     crm:filterCRM,
     cs:filterCS,
@@ -2065,7 +2069,7 @@ function initApp(){
   // 실시간 리스너 켜기 (여기서 딱 1번 실행)
   listenRealtimeTasks(); 
 
-  var nodes=['tasks','devProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices','quickLinks'];
+  var nodes=['tasks','devProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices','quickLinks','products'];
   var results={}, idx=0;
   
   function next(){
@@ -2128,6 +2132,180 @@ function compressAndUploadImage(file, pathPrefix, callback) {
       }
     }
   };
+}
+
+// ═══════════════════════════════════════════════
+// 제품 카탈로그 (Products)
+// ═══════════════════════════════════════════════
+function renderProducts() {
+  var el = document.getElementById('tab-products');
+  if(!el) return;
+
+  var html = `
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-3">
+      <h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-box-3-fill text-pink-600 mr-2"></i> 핵심 제품 및 용기 라인업</h1>
+      <div class="flex items-center gap-3 flex-wrap">
+        <input type="text" id="product-search" oninput="filterProducts()" placeholder="제품명, 코드명 검색..." class="px-4 py-3 border r35 text-sm outline-none w-56 bg-white card-shadow">
+        <button onclick="openProductEditModal()" class="bg-pink-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-pink-700 transition">+ 신규 제품 등록</button>
+      </div>
+    </div>
+    <div id="product-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 pb-10"></div>
+  `;
+  el.innerHTML = html;
+  filterProducts();
+}
+
+function filterProducts() {
+  var q = (document.getElementById('product-search')||{value:''}).value.toLowerCase();
+  var data = CACHE.products.filter(p => (p.name||'').toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q));
+  var el = document.getElementById('product-grid');
+  if(!el) return;
+
+  if(data.length === 0) {
+    el.innerHTML = '<div class="col-span-full py-20 text-center text-gray-400 font-bold">등록된 제품이 없습니다.</div>';
+    return;
+  }
+
+  el.innerHTML = data.sort((a,b) => b.timestamp - a.timestamp).map(p => `
+    <div onclick="openProductDetail('${p.id}')" class="bg-white r35 card-shadow overflow-hidden cursor-pointer hover:-translate-y-1 hover:shadow-xl transition duration-300 group border border-gray-100">
+      <div class="aspect-[4/3] bg-gray-50 relative overflow-hidden flex items-center justify-center">
+        ${p.imageUrl ? `<img src="${p.imageUrl}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">` : `<i class="ri-image-line text-4xl text-gray-300"></i>`}
+        <div class="absolute top-3 left-3 bg-white/90 backdrop-blur px-2 py-1 r10 text-[10px] font-black text-gray-600 border border-gray-200 shadow-sm">${esc(p.category||'기본')}</div>
+      </div>
+      <div class="p-5">
+        <p class="text-[10px] font-bold text-pink-500 mb-1 tracking-wider uppercase">${esc(p.code)}</p>
+        <h3 class="font-black text-lg text-gray-800 truncate mb-2">${esc(p.name)}</h3>
+        <p class="text-xs text-gray-500 line-clamp-2 leading-relaxed">${esc(p.description||'설명 없음')}</p>
+      </div>
+    </div>
+  `).join('');
+}
+
+// 제품 등록/수정 모달
+function openProductEditModal(id) {
+  var p = id ? CACHE.products.find(x => x.id === id) : null;
+  var previewImg = p && p.imageUrl ? `<img src="${p.imageUrl}" class="w-full h-full object-cover r24">` : `<i class="ri-image-add-fill text-5xl text-pink-300 mb-2"></i><span class="text-xs font-bold text-gray-400" id="prod-img-text">클릭하여 사진 업로드</span>`;
+
+  renderModalRoot('product-edit-modal', `
+    <div class="bg-white r35 modal-content max-w-2xl p-8 md:p-10 shadow-2xl fade-in">
+      <h2 class="text-xl md:text-2xl font-black text-pink-600 mb-6"><i class="ri-box-3-fill"></i> ${p ? '제품 정보 수정' : '신규 제품 등록'}</h2>
+      
+      <div class="flex flex-col md:flex-row gap-6 mb-6">
+        <label class="w-full md:w-1/3 aspect-square bg-gray-50 border-2 border-dashed border-pink-200 r24 flex flex-col items-center justify-center cursor-pointer hover:bg-pink-50 transition relative overflow-hidden group">
+          <div id="prod-img-preview" class="absolute inset-0 flex flex-col items-center justify-center p-2 text-center pointer-events-none">
+            ${previewImg}
+          </div>
+          <input type="file" accept="image/*" class="hidden" onchange="handleProductImageUpload(this)">
+          <input type="hidden" id="prod-image-url" value="${p ? p.imageUrl : ''}">
+        </label>
+        
+        <div class="flex-1 space-y-4">
+          <div><label class="block text-xs font-bold text-gray-500 mb-1 pl-1">한글명 (제품명) *</label><input type="text" id="prod-name" value="${p?esc(p.name):''}" class="w-full border p-3 r20 text-sm font-bold outline-none focus:border-pink-500 bg-gray-50"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-xs font-bold text-gray-500 mb-1 pl-1">코드명 *</label><input type="text" id="prod-code" value="${p?esc(p.code):''}" class="w-full border p-3 r20 text-sm outline-none focus:border-pink-500 bg-gray-50 uppercase"></div>
+            <div><label class="block text-xs font-bold text-gray-500 mb-1 pl-1">카테고리</label><select id="prod-category" class="w-full border p-3 r20 text-sm font-bold outline-none focus:border-pink-500 bg-gray-50"><option ${p&&p.category==='용기'?'selected':''}>용기</option><option ${p&&p.category==='세척장비'?'selected':''}>세척장비</option><option ${p&&p.category==='소모품'?'selected':''}>소모품</option><option ${p&&p.category==='기타'?'selected':''}>기타</option></select></div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="mb-6"><label class="block text-xs font-bold text-gray-500 mb-1 pl-1">상세 설명</label><textarea id="prod-desc" rows="4" class="w-full border p-4 r20 text-sm outline-none focus:border-pink-500 bg-gray-50 resize-none">${p?esc(p.description||''):''}</textarea></div>
+      
+      <input type="hidden" id="prod-edit-id" value="${p?p.id:''}">
+      <div class="flex justify-end gap-3">
+        ${p ? `<button onclick="deleteProduct('${p.id}')" class="px-6 py-3.5 bg-red-50 text-red-600 r35 text-sm font-bold mr-auto">삭제</button>` : ''}
+        <button onclick="closeModal('product-edit-modal')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200">취소</button>
+        <button onclick="submitProduct()" id="btn-prod-submit" class="px-8 py-3.5 bg-pink-600 text-white r35 text-sm font-bold shadow-lg hover:bg-pink-700">저장</button>
+      </div>
+    </div>
+  `);
+  openModal('product-edit-modal');
+}
+
+function handleProductImageUpload(input) {
+  if(!input.files || !input.files[0]) return;
+  var btn = document.getElementById('btn-prod-submit');
+  var text = document.getElementById('prod-img-text');
+  if(btn) { btn.disabled = true; btn.innerText = "사진 압축 중..."; }
+  if(text) { text.innerText = "업로드 중..."; }
+  
+  compressAndUploadImage(input.files[0], 'products', function(url){
+    document.getElementById('prod-image-url').value = url;
+    document.getElementById('prod-img-preview').innerHTML = `<img src="${url}" class="w-full h-full object-cover r24">`;
+    if(btn) { btn.disabled = false; btn.innerText = "저장"; }
+  });
+}
+
+function submitProduct() {
+  var id = document.getElementById('prod-edit-id').value;
+  var name = document.getElementById('prod-name').value.trim();
+  var code = document.getElementById('prod-code').value.trim();
+  if(!name || !code) return showToast("제품명과 코드명은 필수입니다.");
+
+  var obj = {
+    name: name, code: code,
+    category: document.getElementById('prod-category').value,
+    description: document.getElementById('prod-desc').value,
+    imageUrl: document.getElementById('prod-image-url').value
+  };
+
+  if(id) {
+    var idx = CACHE.products.findIndex(x => x.id === id);
+    if(idx > -1) Object.assign(CACHE.products[idx], obj);
+    FB.patch('products/'+id, obj);
+    showToast("수정 완료");
+  } else {
+    var newId = genId();
+    var newObj = Object.assign({id: newId, timestamp: Date.now(), creator: USER.email}, obj);
+    CACHE.products.push(newObj);
+    FB.set('products/'+newId, newObj);
+    showToast("등록 완료");
+  }
+  closeModal('product-edit-modal');
+  renderProducts();
+}
+
+function openProductDetail(id) {
+  var p = CACHE.products.find(x => x.id === id);
+  if(!p) return;
+
+  renderModalRoot('product-detail-modal', `
+    <div class="bg-white r35 modal-content max-w-4xl p-0 shadow-2xl relative fade-in flex flex-col md:flex-row overflow-hidden">
+      <button onclick="closeModal('product-detail-modal')" class="absolute top-6 right-6 text-gray-800 bg-white/50 rounded-full w-10 h-10 flex items-center justify-center hover:bg-white z-10 backdrop-blur"><i class="ri-close-line text-2xl"></i></button>
+      
+      <div class="w-full md:w-1/2 bg-gray-100 flex items-center justify-center relative min-h-[300px]">
+        ${p.imageUrl ? `<img src="${p.imageUrl}" class="w-full h-full object-cover">` : `<i class="ri-box-3-fill text-9xl text-gray-200"></i>`}
+        <div class="absolute bottom-4 left-4 bg-black/60 backdrop-blur text-white px-3 py-1.5 r10 text-xs font-bold tracking-widest">${esc(p.category||'기본')}</div>
+      </div>
+      
+      <div class="w-full md:w-1/2 p-8 md:p-12 flex flex-col justify-center">
+        <p class="text-sm font-black text-pink-500 mb-2 tracking-widest uppercase"><i class="ri-barcode-box-line mr-1"></i> ${esc(p.code)}</p>
+        <h2 class="text-3xl md:text-4xl font-black text-gray-900 mb-6 leading-tight">${esc(p.name)}</h2>
+        
+        <div class="bg-gray-50 p-6 r24 mb-8 flex-1">
+          <p class="text-xs font-black text-gray-400 mb-3 border-b pb-2">제품 상세 설명</p>
+          <p class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">${esc(p.description||'등록된 설명이 없습니다.')}</p>
+        </div>
+        
+        <div class="flex justify-between items-center border-t pt-4">
+          <p class="text-[10px] text-gray-400 font-bold">등록자: ${getMemberName(p.creator)}</p>
+          ${canDelete() ? `<button onclick="closeModal('product-detail-modal'); openProductEditModal('${p.id}');" class="px-5 py-2 bg-gray-100 text-gray-700 r20 text-xs font-bold hover:bg-gray-200 transition"><i class="ri-edit-2-line mr-1"></i>수정/관리</button>` : ''}
+        </div>
+      </div>
+    </div>
+  `);
+  openModal('product-detail-modal');
+}
+
+function deleteProduct(id) {
+  if(!canDelete()) return showToast("삭제 권한이 없습니다.");
+  openCustomConfirm("제품 삭제", "이 제품을 카탈로그에서 삭제하시겠습니까?", function(){
+    CACHE.products = CACHE.products.filter(x => x.id !== id);
+    FB.patch('products/'+id, { isDeleted: true });
+    closeModal('product-edit-modal');
+    closeModal('product-detail-modal');
+    renderProducts();
+    showToast("삭제되었습니다.");
+  });
 }
 
 // 끝
