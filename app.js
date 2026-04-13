@@ -2478,102 +2478,133 @@ function renderProducts() {
   var el = document.getElementById('tab-products');
   if(!el) return;
 
-  // 뷰 모드 상태 초기화 (없으면 카드모드)
-  if(!window.productViewMode) window.productViewMode = 'grid';
+  if(!window.productViewMode) window.productViewMode = 'list'; // 기본은 시안처럼 리스트형
 
   el.innerHTML = `
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-3">
-      <h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-box-3-fill text-pink-600 mr-2"></i> 제품 및 단가 관리</h1>
+      <div>
+        <h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-box-3-fill text-gray-700 mr-2"></i> 제품 라인업</h1>
+        <p class="text-xs text-gray-400 mt-1 ml-9">전체 제품 및 자산 단가 관리 시스템</p>
+      </div>
       <div class="flex items-center gap-3 flex-wrap">
-        <div class="flex bg-white border r24 p-1 shadow-sm">
-          <button onclick="window.productViewMode='grid'; renderProducts();" class="px-4 py-2 r20 text-xs font-bold ${window.productViewMode==='grid'?'bg-pink-600 text-white':'text-gray-400'}"><i class="ri-grid-fill"></i> 카드형</button>
-          <button onclick="window.productViewMode='list'; renderProducts();" class="px-4 py-2 r20 text-xs font-bold ${window.productViewMode==='list'?'bg-pink-600 text-white':'text-gray-400'}"><i class="ri-list-check"></i> 리스트형</button>
+        <div class="flex bg-gray-100 p-1 r20 border border-gray-200 shadow-inner">
+          <button onclick="window.productViewMode='list'; renderProducts();" class="px-4 py-2 r12 text-xs font-bold transition ${window.productViewMode==='list'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}"><i class="ri-list-check"></i> 전체 목록</button>
+          <button onclick="window.productViewMode='grid'; renderProducts();" class="px-4 py-2 r12 text-xs font-bold transition ${window.productViewMode==='grid'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}"><i class="ri-layout-grid-fill"></i> 갤러리</button>
+          <button onclick="window.productViewMode='cat'; renderProducts();" class="px-4 py-2 r12 text-xs font-bold transition ${window.productViewMode==='cat'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}"><i class="ri-folders-fill"></i> 카테고리별</button>
         </div>
-        <input type="text" id="product-search" oninput="filterProducts()" placeholder="제품 검색..." class="px-4 py-3 border r35 text-sm outline-none w-48 bg-white card-shadow">
-        ${canDelete() ? `<button onclick="openProductEditModal()" class="bg-pink-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg">+ 제품 추가</button>` : ''}
+        <input type="text" id="product-search" oninput="filterProducts()" placeholder="제품명, 코드 검색..." class="px-4 py-3 border r35 text-sm outline-none w-48 bg-white card-shadow">
+        ${canDelete() ? `
+          <button onclick="openProductEditModal()" class="bg-gray-800 text-white px-5 py-3 r35 text-sm font-bold shadow-lg hover:bg-black transition">+ 제품 등록</button>
+          <button onclick="openCsvUploadModal()" class="bg-emerald-600 text-white px-5 py-3 r35 text-sm font-bold shadow-lg hover:bg-emerald-700 transition"><i class="ri-file-excel-2-fill"></i> CSV 일괄등록</button>
+        ` : ''}
       </div>
     </div>
-    <div id="product-display-area" class="${window.productViewMode === 'grid' ? 'grid grid-cols-2 md:grid-cols-4 gap-6' : 'bg-white r35 overflow-hidden border border-gray-100 shadow-sm'}"></div>
+    <div id="product-display-area" class="fade-in overflow-hidden"></div>
   `;
   filterProducts();
 }
 
 function filterProducts() {
   var q = (document.getElementById('product-search')||{value:''}).value.toLowerCase();
-  var data = CACHE.products.filter(p => (p.name||'').toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q));
+  var data = CACHE.products.filter(p => !p.isDeleted && ((p.name||'').toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q)));
   var el = document.getElementById('product-display-area');
   if(!el) return;
 
-  if (window.productViewMode === 'grid') {
-    // 1. 기존 카드형 갤러리 (대표님 기존 코드 유지)
-    el.innerHTML = data.map(p => `
-      <div onclick="openProductDetail('${p.id}')" class="bg-white r35 card-shadow overflow-hidden cursor-pointer hover:-translate-y-1 transition duration-300 border border-gray-50">
-        <div class="aspect-square bg-gray-50 flex items-center justify-center">${p.imageUrl?`<img src="${p.imageUrl}" class="w-full h-full object-cover">`:`<i class="ri-image-line text-3xl text-gray-200"></i>`}</div>
-        <div class="p-4"><p class="text-[10px] font-bold text-pink-500 mb-1 uppercase">${p.code}</p><h3 class="font-black text-gray-800 truncate">${p.name}</h3></div>
-      </div>`).join('');
-  } else {
-    // 2. 신규 리스트형 (단가표 형태)
+  if (window.productViewMode === 'list') {
+    // 🌟 시안 [image_ada823.png] 버전의 테이블 뷰
+    el.className = "bg-white r24 overflow-x-auto border border-gray-100 shadow-sm";
     el.innerHTML = `
-      <table class="w-full text-left text-sm">
-        <thead class="bg-gray-50 border-b border-gray-100">
+      <table class="w-full text-left text-xs whitespace-nowrap">
+        <thead class="bg-gray-50/80 border-b text-gray-400 font-bold uppercase tracking-wider">
           <tr>
-            <th class="p-4 font-black text-gray-400">제품명</th>
-            <th class="p-4 font-black text-gray-400 text-center">코드</th>
-            <th class="p-4 font-black text-gray-400 text-right">판매가</th>
-            <th class="p-4 font-black text-gray-400 text-right">대여가(월)</th>
-            <th class="p-4 font-black text-gray-400 text-center">상세</th>
+            <th class="p-4 pl-6"><i class="ri-text"></i> 제품명</th>
+            <th class="p-4"><i class="ri-image-line"></i> 분류</th>
+            <th class="p-4"><i class="ri-cup-line"></i> 용량</th>
+            <th class="p-4"><i class="ri-hand-coin-line"></i> 형태</th>
+            <th class="p-4"><i class="ri-price-tag-3-line"></i> 카테고리</th>
+            <th class="p-4 text-right"><i class="ri-money-dollar-circle-line"></i> 원가</th>
+            <th class="p-4 text-right"><i class="ri-shopping-cart-line"></i> 구입가</th>
+            <th class="p-4 text-right text-pink-600"><i class="ri-refresh-line"></i> 렌탈/세척가</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-50">
           ${data.map(p => `
-            <tr class="hover:bg-pink-50/30 transition">
-              <td class="p-4 font-bold text-gray-700 flex items-center gap-3">
-                <img src="${p.imageUrl||''}" class="w-8 h-8 r8 object-cover bg-gray-100"> ${p.name}
+            <tr onclick="openProductDetail('${p.id}')" class="hover:bg-gray-50 cursor-pointer transition">
+              <td class="p-4 pl-6 font-bold text-gray-700 flex items-center gap-3">
+                <i class="ri-archive-fill text-gray-400"></i> ${esc(p.name)}
               </td>
-              <td class="p-4 text-center text-xs text-gray-400 font-bold">${p.code}</td>
-              <td class="p-4 text-right font-black text-blue-600">₩${(p.price||0).toLocaleString()}</td>
-              <td class="p-4 text-right font-black text-purple-600">₩${(p.rent||0).toLocaleString()}</td>
-              <td class="p-4 text-center"><button onclick="openProductDetail('${p.id}')" class="text-gray-300 hover:text-pink-500"><i class="ri-external-link-line text-lg"></i></button></td>
+              <td class="p-4 text-gray-500">${esc(p.subType || '-')}</td>
+              <td class="p-4 text-gray-500 font-medium">${esc(p.volume || '-')}</td>
+              <td class="p-4"><span class="bg-gray-100 text-gray-500 px-2 py-0.5 r4 font-bold text-[10px]">${esc(p.shape || 'PP')}</span></td>
+              <td class="p-4"><span class="bg-purple-50 text-purple-600 px-2 py-0.5 r4 font-black text-[10px]">${esc(p.category)}</span></td>
+              <td class="p-4 text-right font-bold text-gray-400">${p.price_origin ? Number(p.price_origin).toLocaleString() : ''}</td>
+              <td class="p-4 text-right font-bold text-gray-800">${p.price_buy ? Number(p.price_buy).toLocaleString() : ''}</td>
+              <td class="p-4 text-right font-black text-pink-600 bg-pink-50/30">${p.price_rent ? Number(p.price_rent).toLocaleString() : ''}</td>
             </tr>`).join('')}
         </tbody>
       </table>`;
+  } else if (window.productViewMode === 'grid') {
+    // 갤러리 모드 (기존 유지)
+    el.className = "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6";
+    el.innerHTML = data.map(p => `
+      <div onclick="openProductDetail('${p.id}')" class="bg-white r35 card-shadow overflow-hidden cursor-pointer hover:-translate-y-1 transition duration-300 border border-gray-100 group">
+        <div class="aspect-square bg-gray-50 flex items-center justify-center relative overflow-hidden">
+          ${p.imageUrl ? `<img src="${p.imageUrl}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">` : `<i class="ri-box-3-line text-4xl text-gray-200"></i>`}
+          <div class="absolute top-3 left-3 bg-white/90 backdrop-blur px-2 py-0.5 r8 text-[9px] font-black text-gray-600 shadow-sm border border-gray-100">${p.category}</div>
+        </div>
+        <div class="p-4 text-center">
+          <p class="text-[9px] font-bold text-pink-500 mb-1 uppercase">${p.code}</p>
+          <h3 class="font-black text-gray-800 truncate text-sm">${p.name}</h3>
+        </div>
+      </div>`).join('');
   }
 }
 
 // 제품 등록/수정 모달
 function openProductEditModal(id) {
   var p = id ? CACHE.products.find(x => x.id === id) : null;
-  var previewImg = p && p.imageUrl ? `<img src="${p.imageUrl}" class="w-full h-full object-cover r24">` : `<i class="ri-image-add-fill text-5xl text-pink-300 mb-2"></i><span class="text-xs font-bold text-gray-400" id="prod-img-text">클릭하여 사진 업로드</span>`;
-
   renderModalRoot('product-edit-modal', `
-    <div class="bg-white r35 modal-content max-w-2xl p-8 md:p-10 shadow-2xl fade-in">
-      <h2 class="text-xl md:text-2xl font-black text-pink-600 mb-6"><i class="ri-box-3-fill"></i> ${p ? '제품 정보 수정' : '신규 제품 등록'}</h2>
+    <div class="bg-white r35 modal-content max-w-3xl p-8 md:p-10 shadow-2xl fade-in overflow-y-auto max-h-[90vh]">
+      <h2 class="text-xl md:text-2xl font-black text-gray-800 mb-6 border-b pb-4"><i class="ri-edit-box-line text-pink-600 mr-2"></i> ${p ? '제품 정보 수정' : '신규 제품 등록'}</h2>
       
-      <div class="flex flex-col md:flex-row gap-6 mb-6">
-        <label class="w-full md:w-1/3 aspect-square bg-gray-50 border-2 border-dashed border-pink-200 r24 flex flex-col items-center justify-center cursor-pointer hover:bg-pink-50 transition relative overflow-hidden group">
-          <div id="prod-img-preview" class="absolute inset-0 flex flex-col items-center justify-center p-2 text-center pointer-events-none">
-            ${previewImg}
-          </div>
-          <input type="file" accept="image/*" class="hidden" onchange="handleProductImageUpload(this)">
-          <input type="hidden" id="prod-image-url" value="${p ? p.imageUrl : ''}">
-        </label>
-        
-        <div class="flex-1 space-y-4">
-          <div><label class="block text-xs font-bold text-gray-500 mb-1 pl-1">한글명 (제품명) *</label><input type="text" id="prod-name" value="${p?esc(p.name):''}" class="w-full border p-3 r20 text-sm font-bold outline-none focus:border-pink-500 bg-gray-50"></div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div class="space-y-4">
+          <div><label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">제품명 (한글) *</label><input type="text" id="p-name" value="${p?esc(p.name):''}" class="w-full border p-3 r20 text-sm font-bold bg-gray-50 outline-none"></div>
+          <div><label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">제품 코드 *</label><input type="text" id="p-code" value="${p?esc(p.code):''}" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none uppercase"></div>
           <div class="grid grid-cols-2 gap-3">
-            <div><label class="block text-xs font-bold text-gray-500 mb-1 pl-1">코드명 *</label><input type="text" id="prod-code" value="${p?esc(p.code):''}" class="w-full border p-3 r20 text-sm outline-none focus:border-pink-500 bg-gray-50 uppercase"></div>
-            <div><label class="block text-xs font-bold text-gray-500 mb-1 pl-1">카테고리</label><select id="prod-category" class="w-full border p-3 r20 text-sm font-bold outline-none focus:border-pink-500 bg-gray-50"><option ${p&&p.category==='용기'?'selected':''}>용기</option><option ${p&&p.category==='세척장비'?'selected':''}>세척장비</option><option ${p&&p.category==='소모품'?'selected':''}>소모품</option><option ${p&&p.category==='기타'?'selected':''}>기타</option></select></div>
+            <div><label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">분류</label><input type="text" id="p-subtype" value="${p?esc(p.subType):''}" placeholder="예: 비매품" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none"></div>
+            <div><label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">용량</label><input type="text" id="p-volume" value="${p?esc(p.volume):''}" placeholder="500ml / 12oz" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none"></div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">형태/재질</label><input type="text" id="p-shape" value="${p?esc(p.shape):'PP'}" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none"></div>
+            <div><label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">카테고리</label><select id="p-cat" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none font-bold">
+              <option ${p&&p.category==='다회용기'?'selected':''}>다회용기</option>
+              <option ${p&&p.category==='다회용컵'?'selected':''}>다회용컵</option>
+              <option ${p&&p.category==='키오스크'?'selected':''}>키오스크</option>
+              <option ${p&&p.category==='RFID 계수기'?'selected':''}>RFID 계수기</option>
+              <option ${p&&p.category==='기타'?'selected':''}>기타</option>
+            </select></div>
+          </div>
+        </div>
+        <div class="space-y-4">
+           <label class="block w-full aspect-video bg-gray-100 r24 flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-200 overflow-hidden relative">
+            <div id="p-img-preview" class="absolute inset-0 flex items-center justify-center p-2">${p && p.imageUrl ? `<img src="${p.imageUrl}" class="w-full h-full object-contain">` : '<i class="ri-image-add-line text-4xl text-gray-300"></i>'}</div>
+            <input type="file" class="hidden" onchange="handleProductImageUpload(this)">
+            <input type="hidden" id="p-img-url" value="${p?p.imageUrl:''}">
+          </label>
+          <div class="grid grid-cols-3 gap-2 mt-4">
+            <div><label class="block text-[8px] font-black text-gray-400 mb-1">원가</label><input type="number" id="p-p1" value="${p?p.price_origin:''}" class="w-full border p-3 r16 text-xs bg-gray-50 outline-none font-bold text-gray-500"></div>
+            <div><label class="block text-[8px] font-black text-gray-400 mb-1">구입가</label><input type="number" id="p-p2" value="${p?p.price_buy:''}" class="w-full border p-3 r16 text-xs bg-gray-50 outline-none font-bold text-gray-800"></div>
+            <div><label class="block text-[8px] font-black text-pink-500 mb-1">렌탈가</label><input type="number" id="p-p3" value="${p?p.price_rent:''}" class="w-full border p-3 r16 text-xs bg-pink-50 border-pink-100 outline-none font-black text-pink-600"></div>
           </div>
         </div>
       </div>
-      
-      <div class="mb-6"><label class="block text-xs font-bold text-gray-500 mb-1 pl-1">상세 설명</label><textarea id="prod-desc" rows="4" class="w-full border p-4 r20 text-sm outline-none focus:border-pink-500 bg-gray-50 resize-none">${p?esc(p.description||''):''}</textarea></div>
-      
-      <input type="hidden" id="prod-edit-id" value="${p?p.id:''}">
-      <div class="flex justify-end gap-3">
-        ${p ? `<button onclick="deleteProduct('${p.id}')" class="px-6 py-3.5 bg-red-50 text-red-600 r35 text-sm font-bold mr-auto">삭제</button>` : ''}
-        <button onclick="closeModal('product-edit-modal')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200">취소</button>
-        <button onclick="submitProduct()" id="btn-prod-submit" class="px-8 py-3.5 bg-pink-600 text-white r35 text-sm font-bold shadow-lg hover:bg-pink-700">저장</button>
+
+      <div class="mb-8"><label class="block text-[10px] font-black text-gray-400 uppercase mb-1 ml-1">상세 설명</label><textarea id="p-desc" rows="4" class="w-full border p-4 r24 text-sm bg-gray-50 outline-none resize-none">${p?esc(p.description):''}</textarea></div>
+
+      <div class="flex justify-end gap-3 pt-6 border-t">
+        <button onclick="closeModal('product-edit-modal')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold text-gray-400">취소</button>
+        <button onclick="submitNewProduct('${p?p.id:''}')" class="px-8 py-3.5 bg-gray-900 text-white r35 text-sm font-bold shadow-xl hover:bg-black transition">제품 데이터 저장</button>
       </div>
     </div>
   `);
@@ -2604,19 +2635,20 @@ function submitProduct() {
     name: name, code: code,
     category: document.getElementById('prod-category').value,
     description: document.getElementById('prod-desc').value,
-    imageUrl: document.getElementById('prod-image-url').value
+    price: Number(document.getElementById('prod-price').value) || 0, // 🌟 저장
+    rent: Number(document.getElementById('prod-rent').value) || 0,   // 🌟 저장
+    imageUrl: document.getElementById('prod-image-url').value,
+    timestamp: Date.now()
   };
 
   if(id) {
-    var idx = CACHE.products.findIndex(x => x.id === id);
-    if(idx > -1) Object.assign(CACHE.products[idx], obj);
     FB.patch('products/'+id, obj);
     showToast("수정 완료");
   } else {
     var newId = genId();
-    var newObj = Object.assign({id: newId, timestamp: Date.now(), creator: USER.email}, obj);
-    CACHE.products.push(newObj);
-    FB.set('products/'+newId, newObj);
+    obj.id = newId;
+    obj.creator = USER.email;
+    FB.set('products/'+newId, obj);
     showToast("등록 완료");
   }
   closeModal('product-edit-modal');
@@ -2813,6 +2845,46 @@ function renderWikiReaders(wikiId) {
   });
 }
 
+function openCsvUploadModal() {
+  renderModalRoot('csv-modal', `
+    <div class="bg-white r35 modal-content max-w-sm p-10 text-center shadow-2xl fade-in">
+      <div class="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-6"><i class="ri-file-excel-2-fill"></i></div>
+      <h2 class="text-xl font-black mb-2">CSV 제품 일괄 업로드</h2>
+      <p class="text-xs text-gray-400 mb-8 leading-relaxed">준비된 CSV 파일을 선택해주세요.<br>형식: 제품명,코드,분류,용량,형태,카테고리,원가,구입가,렌탈가,설명</p>
+      <input type="file" id="csv-file-input" accept=".csv" class="hidden" onchange="handleCsvFile(this)">
+      <label for="csv-file-input" class="w-full block bg-emerald-500 text-white py-4 r24 font-black cursor-pointer shadow-lg hover:bg-emerald-600 transition mb-3">파일 선택하기</label>
+      <button onclick="closeModal('csv-modal')" class="text-sm font-bold text-gray-300">다음에 하기</button>
+    </div>
+  `);
+  openModal('csv-modal');
+}
+
+function handleCsvFile(input) {
+  if(!input.files[0]) return;
+  Papa.parse(input.files[0], {
+    header: true,
+    skipEmptyLines: true,
+    complete: function(results) {
+      const data = results.data;
+      if(confirm(data.length + "개의 제품 데이터를 업데이트하시겠습니까?")) {
+        data.forEach(row => {
+          const id = genId();
+          const obj = {
+            id: id, name: row['제품명'], code: row['코드'], subType: row['분류'], 
+            volume: row['용량'], shape: row['형태'], category: row['카테고리'] || '기타',
+            price_origin: Number(row['원가']), price_buy: Number(row['구입가']), price_rent: Number(row['렌탈가']),
+            description: row['설명'], creator: USER.email, timestamp: Date.now()
+          };
+          FB.set('products/' + id, obj);
+          CACHE.products.push(obj);
+        });
+        showToast("✅ " + data.length + "개 제품 업로드 완료!");
+        closeModal('csv-modal');
+        renderProducts();
+      }
+    }
+  });
+}
 
 // 🌟 뷰 전환 전용 함수 (이게 있어야 리스트/보드 전환이 됩니다)
 function changeTeamView(mode) {
