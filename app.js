@@ -460,163 +460,121 @@ var calendar = null;
 // 🌟 팀 업무 뷰 상태를 저장하는 전역 변수 추가 (맨 위쪽에 넣어도 되고 여기 둬도 됩니다)
 var teamTaskViewMode = 'list'; // 'list' 또는 'board'
 
+// 1. 달력/업무 탭의 전체 틀을 잡는 함수
 function renderCalendar() {
   var el = document.getElementById('tab-calendar');
   if(!el) return;
 
   var isMobile = window.innerWidth < 1024;
 
-  var myTodoHtml = `
-    <div data-id="col-my-todo" class="flex-1 bg-white p-6 r35 card-shadow flex flex-col overflow-hidden min-w-[300px]">
-      <div class="drag-handle flex justify-between items-center mb-4 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
-        <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm pointer-events-none"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
-        <div class="pointer-events-none flex gap-2 items-center">
-          <button onclick="extractWeeklyReport()" class="bg-gray-800 text-white text-[10px] px-3 py-1 r20 pointer-events-auto hover:bg-black transition"><i class="ri-file-copy-line"></i> 주간보고 추출</button>
-          <i class="ri-drag-move-fill text-gray-300 text-lg"></i>
-        </div>
-      </div>
-      <div class="flex gap-2 mb-4">
-        <input type="text" id="my-todo-input" placeholder="@이름 멘션 가능..." class="flex-1 border p-2.5 r20 text-xs outline-none bg-gray-50" onkeypress="if(event.key==='Enter')addMyTodo()">
-        <button onclick="addMyTodo()" class="bg-pink-500 text-white w-9 h-9 r20 font-bold">+</button>
-      </div>
-      <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
-    </div>
-  `;
-
-  var teamBoardHtml = `
-    <div data-id="col-team-board" class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden min-w-[300px]">
-      <div class="drag-handle flex justify-between items-center mb-6 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
-        <h2 class="font-black text-gray-800 text-lg flex items-center pointer-events-none"><i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황</h2>
-        <div class="flex items-center gap-3 pointer-events-auto">
-          <div class="flex bg-gray-100 p-1 r20">
-            <button onclick="teamTaskViewMode='list'; renderTeamProjectBoard();" class="px-3 py-1 r20 text-xs font-bold ${teamTaskViewMode==='list'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}">리스트</button>
-            <button onclick="teamTaskViewMode='board'; renderTeamProjectBoard();" class="px-3 py-1 r20 text-xs font-bold ${teamTaskViewMode==='board'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}">보드</button>
-          </div>
-          <i class="ri-drag-move-fill text-gray-300 text-xl pointer-events-none"></i>
-        </div>
-      </div>
-      <div id="team-project-tracking-board" class="flex-1 overflow-y-auto pr-2 hide-scrollbar flex flex-col"></div>
-    </div>
-  `;
-
-  var savedOrder = JSON.parse(localStorage.getItem('calLayoutOrder')) || ['col-my-todo', 'col-team-board'];
-  var blocks = { 'col-my-todo': myTodoHtml, 'col-team-board': teamBoardHtml };
-  
-  var orderedHtml = savedOrder.map(id => blocks[id] || '').join('');
-  Object.keys(blocks).forEach(id => { if(!savedOrder.includes(id)) orderedHtml += blocks[id]; });
-
+  // 뼈대 레이아웃
   el.innerHTML = `
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
       <h1 class="text-2xl font-black text-gray-800"><i class="ri-briefcase-fill text-blue-600 mr-2"></i> 팀별 프로젝트 트래킹</h1>
       <button onclick="openTeamTaskModal()" class="bg-blue-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">+ 새 업무 등록</button>
     </div>
     <div id="cal-drag-container" class="flex flex-col lg:flex-row gap-6 ${isMobile ? 'h-auto' : 'h-[calc(100vh-12rem)]'}">
-      ${orderedHtml}
+      
+      <div data-id="col-my-todo" class="flex-1 bg-white p-6 r35 card-shadow flex flex-col overflow-hidden min-w-[300px]">
+        <div class="drag-handle flex justify-between items-center mb-4 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
+          <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm pointer-events-none"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
+          <div class="flex gap-2 items-center">
+            <button onclick="extractWeeklyReport()" class="bg-gray-800 text-white text-[10px] px-3 py-1 r20 hover:bg-black transition">주간보고 추출</button>
+            <i class="ri-drag-move-fill text-gray-300 text-lg"></i>
+          </div>
+        </div>
+        <div class="flex gap-2 mb-4">
+          <input type="text" id="my-todo-input" placeholder="@이름 멘션 가능..." class="flex-1 border p-2.5 r20 text-xs outline-none bg-gray-50" onkeypress="if(event.key==='Enter')addMyTodo()">
+          <button onclick="addMyTodo()" class="bg-pink-500 text-white w-9 h-9 r20 font-bold">+</button>
+        </div>
+        <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
+      </div>
+
+      <div data-id="col-team-board" class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden min-w-[300px]">
+        <div class="drag-handle flex justify-between items-center mb-6 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
+          <h2 class="font-black text-gray-800 text-lg flex items-center pointer-events-none"><i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황</h2>
+          <div class="flex items-center gap-3">
+            <div class="flex bg-gray-100 p-1 r20">
+              <button onclick="changeTeamView('list')" id="view-btn-list" class="px-3 py-1 r20 text-xs font-bold transition">리스트</button>
+              <button onclick="changeTeamView('board')" id="view-btn-board" class="px-3 py-1 r20 text-xs font-bold transition">보드</button>
+            </div>
+            <i class="ri-drag-move-fill text-gray-300 text-xl"></i>
+          </div>
+        </div>
+        <div id="team-project-tracking-board" class="flex-1 overflow-y-auto pr-2 hide-scrollbar flex flex-col"></div>
+      </div>
+
     </div>
   `;
 
   renderMyTodo();
-  renderTeamProjectBoard();
+  renderTeamProjectBoard(); // 실제 데이터 그리기 시작
   setupMention('my-todo-input');
-
-  setTimeout(function(){
-    var container = document.getElementById('cal-drag-container');
-    if(container && typeof Sortable !== 'undefined'){
-      new Sortable(container, {
-        handle: '.drag-handle', animation: 150,
-        onEnd: function(evt) {
-          var order = Array.from(evt.to.children).map(c => c.getAttribute('data-id'));
-          localStorage.setItem('calLayoutOrder', JSON.stringify(order));
-        }
-      });
-    }
-  }, 100);
 }
 
-// 🌟 리스트/보드 뷰를 모두 처리하는 함수
+// 2. 리스트/보드 뷰를 전환하는 전용 함수
+function changeTeamView(mode) {
+  teamTaskViewMode = mode;
+  renderTeamProjectBoard();
+}
+
+// 3. 실제 전사 업무 데이터를 화면에 그리는 함수
 function renderTeamProjectBoard() {
   var el = document.getElementById('team-project-tracking-board');
   if(!el) return;
-  
-  // 상태 토글 UI 강제 갱신
-  renderCalendar(); // 버튼 색상 갱신을 위해 통째로 다시 렌더링 (꼼수지만 확실함)
-  el = document.getElementById('team-project-tracking-board'); // 다시 잡기
+
+  // 버튼 스타일 업데이트
+  var btnList = document.getElementById('view-btn-list');
+  var btnBoard = document.getElementById('view-btn-board');
+  if(btnList && btnBoard) {
+    btnList.className = `px-3 py-1 r20 text-xs font-bold ${teamTaskViewMode==='list'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}`;
+    btnBoard.className = `px-3 py-1 r20 text-xs font-bold ${teamTaskViewMode==='board'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}`;
+  }
 
   var teamTasks = CACHE.tasks.filter(t => t.taskType === 'team');
-  
   if(teamTasks.length === 0) {
     el.innerHTML = '<div class="text-center py-20 text-gray-300 font-bold">등록된 팀별 업무가 없습니다.</div>';
     return;
   }
 
   if (teamTaskViewMode === 'list') {
-    // 1. 아코디언 리스트 뷰
+    // 리스트(아코디언) 모드
     var groups = {};
     teamTasks.forEach(t => { var p = t.project || '공통 업무'; if(!groups[p]) groups[p] = []; groups[p].push(t); });
     el.innerHTML = Object.keys(groups).map(pName => {
       var tasks = groups[pName].sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
       return `
-        <details open class="bg-gray-50/50 r35 border border-gray-100 mb-6 group transition-all duration-300 shrink-0">
+        <details open class="bg-gray-50/50 r35 border border-gray-100 mb-6 group transition-all duration-300">
           <summary class="p-6 font-black text-gray-700 text-base cursor-pointer list-none flex justify-between items-center outline-none">
             <div class="flex items-center"><i class="ri-folder-info-fill text-blue-400 mr-2 text-xl"></i> ${esc(pName)} <span class="ml-2 text-[10px] font-bold text-gray-500 bg-gray-200 px-2 py-0.5 r20">${tasks.length}</span></div>
-            <i class="ri-arrow-down-s-line text-gray-400 text-xl group-open:rotate-180 transition-transform duration-300"></i>
+            <i class="ri-arrow-down-s-line text-gray-400 text-xl group-open:rotate-180 transition-transform"></i>
           </summary>
           <div class="px-6 pb-6 pt-2 space-y-3">
-            ${tasks.map(t => {
-              var cCount = Object.values(CACHE.comments).filter(c => c.targetId === t.id).length;
-              var doneCount = (t.checklist||[]).filter(x=>x.done).length;
-              var totalCount = (t.checklist||[]).length;
-              return `
-                <div onclick="openTaskDetail('${t.id}')" class="bg-white p-5 r24 border border-gray-200 hover:border-blue-400 cursor-pointer transition group">
-                  <div class="flex justify-between items-start mb-2 gap-4"><p class="text-sm font-bold text-gray-800 flex-1">${esc(t.title)}</p>${statusBadge(t.status === 'Done' ? '완료' : '진행중')}</div>
-                  <div class="flex justify-between items-center mt-4"><div class="flex items-center gap-2"><span class="text-[10px] text-gray-500 font-bold">${getMemberName(t.creator)}</span>${totalCount > 0 ? `<span class="text-[9px] bg-violet-50 text-violet-600 px-2 py-0.5 r10 font-bold">체크리스트 ${doneCount}/${totalCount}</span>` : ''}</div><div class="text-[10px] text-gray-400"><i class="ri-chat-3-line"></i> ${cCount}</div></div>
-                </div>`;
-            }).join('')}
+            ${tasks.map(t => `
+              <div onclick="openTaskDetail('${t.id}')" class="bg-white p-5 r24 border border-gray-200 hover:border-blue-400 cursor-pointer transition group shadow-sm">
+                <div class="flex justify-between items-start gap-4"><p class="text-sm font-bold text-gray-800 flex-1">${esc(t.title)}</p>${statusBadge(t.status === 'Done' ? '완료' : '진행중')}</div>
+                <div class="flex justify-between items-center mt-4"><div class="flex items-center gap-2"><span class="text-[10px] text-gray-500 font-bold">${getMemberName(t.creator)}</span></div><div class="text-[10px] text-gray-400"><i class="ri-chat-3-line"></i> ${Object.values(CACHE.comments).filter(c => c.targetId === t.id).length}</div></div>
+              </div>`).join('')}
           </div>
         </details>`;
     }).join('');
   } else {
-    // 2. 칸반 보드 뷰
+    // 칸반 보드 모드
     var statuses = ['Todo', 'In Progress', 'Done'];
-    el.innerHTML = `<div class="flex gap-4 h-full min-w-max pb-4">` + statuses.map(s => {
+    el.innerHTML = `<div class="flex gap-4 h-full min-w-max pb-4 overflow-x-auto">` + statuses.map(s => {
       var tasks = teamTasks.filter(t => t.status === s).sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
-      var badgeColor = s === 'Done' ? 'bg-green-100 text-green-700' : s === 'In Progress' ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600';
       return `
-        <div class="w-64 flex flex-col bg-gray-50/50 r35 p-4 border border-gray-100 shrink-0">
-          <div class="flex items-center justify-between mb-4 px-2">
-            <span class="text-xs font-black uppercase tracking-wider ${badgeColor} px-2 py-1 r20">${s}</span>
-            <span class="text-xs font-bold text-gray-400">${tasks.length}</span>
-          </div>
-          <div id="team-board-${s}" class="flex-1 space-y-3 overflow-y-auto hide-scrollbar min-h-[100px]">
-            ${tasks.map(t => `<div data-id="${t.id}" onclick="openTaskDetail('${t.id}')" class="bg-white p-4 r20 border border-gray-200 hover:border-blue-400 cursor-pointer shadow-sm group"><p class="text-[10px] text-blue-500 font-bold mb-1 truncate">${t.project}</p><p class="text-xs font-bold text-gray-800 mb-3">${esc(t.title)}</p><div class="flex justify-between items-center"><div class="flex">${avatarHtml(t.assignees, 3)}</div><span class="text-[10px] text-gray-400"><i class="ri-chat-3-line"></i> ${Object.values(CACHE.comments).filter(c => c.targetId === t.id).length}</span></div></div>`).join('')}
+        <div class="w-64 flex flex-col bg-gray-50/50 r35 p-4 border border-gray-100">
+          <div class="flex items-center justify-between mb-4 px-2"><span class="text-xs font-black uppercase tracking-wider text-gray-600">${s}</span><span class="text-xs font-bold text-gray-400">${tasks.length}</span></div>
+          <div id="team-board-${s}" class="flex-1 space-y-3 min-h-[100px]">
+            ${tasks.map(t => `<div data-id="${t.id}" onclick="openTaskDetail('${t.id}')" class="bg-white p-4 r20 border border-gray-200 hover:border-blue-400 cursor-pointer shadow-sm group"><p class="text-[10px] text-blue-500 font-bold mb-1">${t.project}</p><p class="text-xs font-bold text-gray-800 mb-3">${esc(t.title)}</p></div>`).join('')}
           </div>
         </div>`;
     }).join('') + `</div>`;
-
-    // 보드 드래그 앤 드롭 활성화
-    setTimeout(() => {
-      statuses.forEach(s => {
-        var colEl = document.getElementById('team-board-'+s);
-        if(colEl) {
-          new Sortable(colEl, {
-            group: 'team-tasks', animation: 150,
-            onEnd: function(evt) {
-              var newStatus = evt.to.id.replace('team-board-', '');
-              var taskId = evt.item.getAttribute('data-id');
-              var t = CACHE.tasks.find(x => x.id === taskId);
-              if(t && t.status !== newStatus) {
-                t.status = newStatus;
-                FB.patch('tasks/'+taskId, {status: newStatus});
-                showToast("상태가 [" + newStatus + "]로 변경되었습니다.");
-                renderCalendar(); // UI 재조정
-              }
-            }
-          });
-        }
-      });
-    }, 200);
   }
 }
+
+
 
 
 // 하위 업무 추가 함수
@@ -2596,6 +2554,65 @@ function sendNativeNotification(title, body) {
         new Notification(title, { body: body, icon: 'https://i.imgur.com/gzXQ8nD.png' });
       }
     });
+  }
+}
+
+// 뷰 전환 전용 함수
+function changeTeamView(mode) {
+  teamTaskViewMode = mode;
+  renderTeamProjectBoard();
+}
+
+function renderTeamProjectBoard() {
+  var el = document.getElementById('team-project-tracking-board');
+  if(!el) return;
+
+  // 버튼 활성화 상태 표시
+  var btnList = document.getElementById('view-btn-list');
+  var btnBoard = document.getElementById('view-btn-board');
+  if(btnList && btnBoard) {
+    btnList.className = `px-3 py-1 r20 text-xs font-bold ${teamTaskViewMode==='list'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}`;
+    btnBoard.className = `px-3 py-1 r20 text-xs font-bold ${teamTaskViewMode==='board'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}`;
+  }
+
+  var teamTasks = CACHE.tasks.filter(t => t.taskType === 'team');
+  if(teamTasks.length === 0) {
+    el.innerHTML = '<div class="text-center py-20 text-gray-300 font-bold">등록된 팀별 업무가 없습니다.</div>';
+    return;
+  }
+
+  if (teamTaskViewMode === 'list') {
+    var groups = {};
+    teamTasks.forEach(t => { var p = t.project || '공통 업무'; if(!groups[p]) groups[p] = []; groups[p].push(t); });
+    el.innerHTML = Object.keys(groups).map(pName => {
+      var tasks = groups[pName].sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+      return `
+        <details open class="bg-gray-50/50 r35 border border-gray-100 mb-6 group transition-all duration-300">
+          <summary class="p-6 font-black text-gray-700 text-base cursor-pointer list-none flex justify-between items-center outline-none">
+            <div class="flex items-center"><i class="ri-folder-info-fill text-blue-400 mr-2 text-xl"></i> ${esc(pName)} <span class="ml-2 text-[10px] font-bold text-gray-500 bg-gray-200 px-2 py-0.5 r20">${tasks.length}</span></div>
+            <i class="ri-arrow-down-s-line text-gray-400 text-xl group-open:rotate-180 transition-transform"></i>
+          </summary>
+          <div class="px-6 pb-6 pt-2 space-y-3">
+            ${tasks.map(t => `
+              <div onclick="openTaskDetail('${t.id}')" class="bg-white p-5 r24 border border-gray-200 hover:border-blue-400 cursor-pointer transition group shadow-sm">
+                <div class="flex justify-between items-start gap-4"><p class="text-sm font-bold text-gray-800 flex-1">${esc(t.title)}</p>${statusBadge(t.status === 'Done' ? '완료' : '진행중')}</div>
+                <div class="flex justify-between items-center mt-4"><div class="flex items-center gap-2"><span class="text-[10px] text-gray-500 font-bold">${getMemberName(t.creator)}</span></div><div class="text-[10px] text-gray-400"><i class="ri-chat-3-line"></i> ${Object.values(CACHE.comments).filter(c => c.targetId === t.id).length}</div></div>
+              </div>`).join('')}
+          </div>
+        </details>`;
+    }).join('');
+  } else {
+    var statuses = ['Todo', 'In Progress', 'Done'];
+    el.innerHTML = `<div class="flex gap-4 h-full min-w-max pb-4 overflow-x-auto">` + statuses.map(s => {
+      var tasks = teamTasks.filter(t => t.status === s).sort((a,b) => (b.timestamp||0) - (a.timestamp||0));
+      return `
+        <div class="w-64 flex flex-col bg-gray-50/50 r35 p-4 border border-gray-100">
+          <div class="flex items-center justify-between mb-4 px-2"><span class="text-xs font-black uppercase tracking-wider text-gray-600">${s}</span><span class="text-xs font-bold text-gray-400">${tasks.length}</span></div>
+          <div id="team-board-${s}" class="flex-1 space-y-3 min-h-[100px]">
+            ${tasks.map(t => `<div data-id="${t.id}" onclick="openTaskDetail('${t.id}')" class="bg-white p-4 r20 border border-gray-200 hover:border-blue-400 cursor-pointer shadow-sm group"><p class="text-[10px] text-blue-500 font-bold mb-1">${t.project}</p><p class="text-xs font-bold text-gray-800 mb-3">${esc(t.title)}</p></div>`).join('')}
+          </div>
+        </div>`;
+    }).join('') + `</div>`;
   }
 }
 
