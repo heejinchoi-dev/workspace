@@ -678,6 +678,27 @@ function renderDevProjectTasks(id){
   el.innerHTML=html;
 }
 
+// 🌟 진행률 자동 계산 함수 (새로 추가)
+function updateDevProgress(id) {
+  var d = CACHE.devProjects.find(x => x.id === id);
+  if(!d) return;
+  if(!d.tasks || d.tasks.length === 0) { d.progress = 0; }
+  else {
+    var doneCount = d.tasks.filter(t => t.done).length;
+    d.progress = Math.round((doneCount / d.tasks.length) * 100);
+  }
+  
+  FB.patch('devProjects/'+id, {progress: d.progress});
+  renderDevProjects(); // 리스트 갱신
+  
+  // 모달이 열려있다면 게이지바 애니메이션 적용
+  var progFill = document.getElementById('dev-detail-progress-fill');
+  var progText = document.getElementById('dev-detail-progress-text');
+  if(progFill) progFill.style.width = d.progress + '%';
+  if(progText) progText.innerText = d.progress + '%';
+}
+
+// 2-2. 상세업무 추가/수정/삭제 시 진행률 함수(updateDevProgress) 호출 추가
 function addDevProjectTask(id){
   var cat=document.getElementById('dev-task-cat').value.trim()||'기본';
   var text=document.getElementById('dev-task-text').value.trim();
@@ -687,8 +708,9 @@ function addDevProjectTask(id){
   if(!d.tasks) d.tasks=[];
   d.tasks.push({category:cat, text:text, deadline:deadline, done:false});
   FB.patch('devProjects/'+id, {tasks:d.tasks});
-  document.getElementById('dev-task-text').value=''; // 입력창 비우기
+  document.getElementById('dev-task-text').value='';
   renderDevProjectTasks(id);
+  updateDevProgress(id); // 🌟 진행률 업데이트
 }
 
 function toggleDevProjectTask(id, idx, done){
@@ -696,6 +718,7 @@ function toggleDevProjectTask(id, idx, done){
   d.tasks[idx].done=done;
   FB.patch('devProjects/'+id, {tasks:d.tasks});
   renderDevProjectTasks(id);
+  updateDevProgress(id); // 🌟 진행률 업데이트
 }
 
 function deleteDevProjectTask(id, idx){
@@ -703,7 +726,29 @@ function deleteDevProjectTask(id, idx){
   d.tasks.splice(idx,1);
   FB.patch('devProjects/'+id, {tasks:d.tasks});
   renderDevProjectTasks(id);
+  updateDevProgress(id); // 🌟 진행률 업데이트
 }
+
+// 2-3. 상세 모달창 열 때 HTML에 id 부여 (진행률 애니메이션 용도)
+function openDevDetail(id){
+  var d=CACHE.devProjects.find(function(x){return String(x.id)===String(id);});if(!d)return;
+  if(!d.images) d.images = [];
+  var cList=Object.keys(CACHE.comments||{}).map(function(k){return CACHE.comments[k];}).filter(function(c){return c.targetId===id;}).sort(function(a,b){return new Date(a.date)-new Date(b.date);});
+  var tBadge = d.ticketId ? '<span class="text-blue-600 mr-2 text-sm bg-blue-100 px-2 py-1 r20 font-black">['+d.ticketId+']</span>' : '';
+  var noteHtml = d.note && d.note.includes('<') ? d.note : esc(d.note||'내용 없음');
+
+  var leftHtml = '<div class="flex-1 p-8 md:p-10 overflow-y-auto"><div class="flex items-center gap-2 mb-2">'+tBadge+priorityHtml(d.priority,'md')+'</div><h2 class="text-xl md:text-3xl font-black text-gray-900 mb-4 pr-10">'+esc(d.title)+'</h2><div class="flex gap-2 flex-wrap mb-4">'+tagHtml(d.tags)+'<span class="text-xs px-3 py-1 r20 font-black '+(DEV_STATUS_META[d.status]||DEV_STATUS_META['보류']).badge+'">'+d.status+'</span>'+(d.deadline?'<span class="text-xs px-3 py-1 r20 font-black bg-red-50 text-red-600"><i class="ri-calendar-line"></i> 마감: '+d.deadline+'</span>':'')+'</div>' + 
+  // 🌟 게이지 바에 ID 부여
+  '<div class="grid grid-cols-1 gap-4 mb-6 bg-gray-50 p-5 r24 text-sm"><div><span class="text-gray-400 text-xs font-bold">진행률 (자동계산)</span><div class="flex items-center gap-2 mt-1"><div class="flex-1 progress-bar"><div id="dev-detail-progress-fill" class="progress-fill transition-all duration-500" style="width:'+(d.progress||0)+'%"></div></div><span id="dev-detail-progress-text" class="text-sm font-black text-blue-600">'+(d.progress||0)+'%</span></div></div><div><span class="text-gray-400 text-xs font-bold">담당자</span><div class="flex gap-1 mt-1">'+avatarHtml(d.assignees,8)+'</div></div></div><div class="mb-6 border-t border-gray-100 pt-5"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2 mb-3"><i class="ri-list-check-2 text-blue-500"></i> 카테고리별 세부 업무</h3><div id="dev-task-list" class="space-y-3 mb-4 max-h-[300px] overflow-y-auto hide-scrollbar"></div><div class="flex gap-2 bg-gray-50 p-3 r20"><input type="text" id="dev-task-cat" placeholder="분류(예: 기획)" class="w-1/4 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="text" id="dev-task-text" placeholder="업무 내용 입력" class="flex-1 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="date" id="dev-task-deadline" class="w-32 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><button onclick="addDevProjectTask(\''+d.id+'\')" class="bg-blue-600 text-white px-4 py-2 r20 text-xs font-bold hover:bg-blue-700 shadow-sm">추가</button></div></div><div class="bg-white border border-gray-200 p-5 r24 mb-6"><p class="text-xs font-black text-blue-500 mb-4 border-b pb-2">상세 설명 (에디터)</p><div class="ql-editor p-0 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">'+noteHtml+'</div></div>' + 
+  '<div class="mb-8 border-t pt-6"><div class="flex justify-between items-center mb-4"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2"><i class="ri-image-add-fill text-blue-500"></i> 첨부 이미지</h3><label class="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 r20 text-xs font-bold transition">+ 사진 올리기<input type="file" class="hidden" accept="image/*" onchange="handleDevImage(this, \''+d.id+'\')"></label></div><div class="grid grid-cols-2 md:grid-cols-3 gap-3">' + (d.images.length===0 ? '<p class="text-xs text-gray-400 col-span-3 py-4">첨부된 사진이 없습니다.</p>' : d.images.map(img => `<a href="${img}" target="_blank" class="block aspect-video bg-gray-100 r20 overflow-hidden border border-gray-200 hover:border-blue-400 transition"><img src="${img}" class="w-full h-full object-cover object-center"></a>`).join('')) + '</div></div>' +
+  '<div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-detail-modal\');openDevModal(CACHE.devProjects.find(function(x){return x.id===\''+d.id+'\';}))" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">수정</button><button onclick="confirmDeleteDev2(\''+d.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold hover:bg-red-100 transition">삭제</button></div></div>';
+  
+  var rightHtml = '<div class="w-full md:w-[360px] bg-gray-50 border-l p-8 flex flex-col h-[600px] md:h-auto"><h3 class="font-black text-lg mb-4 text-gray-800"><i class="ri-chat-3-fill text-blue-500 mr-2"></i>업무 코멘트 / 멘션</h3><div id="dev-cmt-list" class="flex-1 overflow-y-auto space-y-3 hide-scrollbar mb-4">'+(cList.length?cList.map(function(c){var ctext = esc(c.content).replace(/@([^\s]+)/g, '<span class="text-blue-600 font-bold bg-blue-100 px-1 r20">@$1</span>');return'<div class="bg-white p-4 r20 shadow-sm border border-gray-100"><div class="flex justify-between items-center mb-1"><span class="font-black text-xs text-gray-800">'+c.authorName+'</span><span class="text-[10px] text-gray-400">'+c.date+'</span></div><p class="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">'+ctext+'</p></div>';}).join(''):'<p class="text-xs text-gray-400 text-center py-10">댓글이 없습니다.<br>@이름 으로 팀원을 호출해 보세요.</p>')+'</div><div class="relative"><textarea id="dev-cmt-in" rows="3" placeholder="@이름 으로 멘션, 내용 입력..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-blue-400 shadow-sm bg-white"></textarea><button onclick="submitDevComment(\''+d.id+'\')" class="absolute bottom-4 right-4 bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-blue-700 transition"><i class="ri-send-plane-fill text-sm"></i></button></div></div>';
+
+  renderModalRoot('dev-detail-modal','<div class="bg-white r35 modal-content max-w-6xl p-0 shadow-2xl relative fade-in flex flex-col md:flex-row overflow-hidden"><button onclick="closeModal(\'dev-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black z-10"><i class="ri-close-line text-3xl"></i></button>'+leftHtml+rightHtml+'</div>');
+  openModal('dev-detail-modal'); renderDevProjectTasks(d.id); var cl=document.getElementById('dev-cmt-list');if(cl)cl.scrollTop=cl.scrollHeight;
+}
+
 // 2. 개발 프로젝트 삭제 변경
 function confirmDeleteDev2(id){
   if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
@@ -715,67 +760,54 @@ function confirmDeleteDev2(id){
   });
 }
 
+// 1-1. 프로젝트 생성 모달 (진행률 수동입력 제거, 드롭다운 z-index 수정)
 function openDevModal(data){
-  // 생성 시에는 진행률 숨김, 수정 시에만 보이게 처리
-  var progressHtml = data ? '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">진행률 (%)</label><input id="dev-progress" type="number" min="0" max="100" value="'+(data.progress||0)+'" class="w-full border p-4 r24 outline-none text-base font-black text-blue-600 text-center bg-gray-50"></div>' : '';
-
-  renderModalRoot('dev-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in overflow-y-auto max-h-[90vh]"><h2 class="text-xl md:text-2xl font-black text-blue-600 mb-6"><i class="ri-macbook-fill"></i> '+(data?'프로젝트 수정':'프로젝트 생성')+'</h2><input id="dev-title" type="text" value="'+(data?esc(data.title):'')+'" placeholder="프로젝트명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-blue-500"><div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4"><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">우선순위</label><select id="dev-priority-select" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50"><option value="P1" '+(data&&data.priority==='P1'?'selected':'')+'>P1 긴급</option><option value="P2" '+(data&&data.priority==='P2'?'selected':'')+'>P2 높음</option><option value="P3" '+((!data||data.priority==='P3')?'selected':'')+'>P3 보통</option><option value="P4" '+(data&&data.priority==='P4'?'selected':'')+'>P4 낮음</option></select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">상태</label><select id="dev-status" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50">'+Object.keys(DEV_STATUS_META).map(function(s){return'<option value="'+s+'" '+(data&&data.status===s?'selected':'')+'>'+s+'</option>';}).join('')+'</select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 마감일</label><input id="dev-deadline-main" type="date" value="'+(data&&data.deadline?data.deadline:'')+'" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50"></div></div><div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">태그 (쉼표 구분)</label><input id="dev-tags-input" type="text" value="'+(data?esc(data.tags||''):'')+'" placeholder="iOS, API" class="w-full border p-4 r24 outline-none text-sm bg-gray-50"></div>' + progressHtml + '<div class="mb-6"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">참여 인원</label><div id="dev-assignees-container" class="w-full border p-4 r24 bg-white max-h-32 overflow-y-auto space-y-2 hide-scrollbar shadow-inner"></div></div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 상세 설명</label><div id="dev-quill-container" class="mb-6 bg-white border border-gray-200 r24" style="height: 250px;"></div><input type="hidden" id="dev-edit-id" value="'+(data?data.id:'')+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button onclick="submitDevProject()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">'+(data?'수정':'생성')+'</button></div></div>');
+  // 기존 수동 진행률(progressHtml) 삭제
+  renderModalRoot('dev-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in overflow-y-visible max-h-[90vh]"><h2 class="text-xl md:text-2xl font-black text-blue-600 mb-6"><i class="ri-macbook-fill"></i> '+(data?'프로젝트 수정':'프로젝트 생성')+'</h2><input id="dev-title" type="text" value="'+(data?esc(data.title):'')+'" placeholder="프로젝트명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-blue-500"><div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4"><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">우선순위</label><select id="dev-priority-select" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50"><option value="P1" '+(data&&data.priority==='P1'?'selected':'')+'>P1 긴급</option><option value="P2" '+(data&&data.priority==='P2'?'selected':'')+'>P2 높음</option><option value="P3" '+((!data||data.priority==='P3')?'selected':'')+'>P3 보통</option><option value="P4" '+(data&&data.priority==='P4'?'selected':'')+'>P4 낮음</option></select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">상태</label><select id="dev-status" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50">'+Object.keys(DEV_STATUS_META).map(function(s){return'<option value="'+s+'" '+(data&&data.status===s?'selected':'')+'>'+s+'</option>';}).join('')+'</select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 마감일</label><input id="dev-deadline-main" type="date" value="'+(data&&data.deadline?data.deadline:'')+'" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50"></div></div><div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">태그 (쉼표 구분)</label><input id="dev-tags-input" type="text" value="'+(data?esc(data.tags||''):'')+'" placeholder="iOS, API" class="w-full border p-4 r24 outline-none text-sm bg-gray-50"></div>' + 
+  
+  // 🌟 참여인원 드롭다운이 에디터 위로 올라오도록 relative와 z-50 부여
+  '<div class="mb-6 relative z-50"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">참여 인원</label><div id="dev-assignees-container" class="w-full border p-4 r24 bg-white max-h-32 overflow-y-auto space-y-2 hide-scrollbar shadow-inner relative z-50"></div></div>' + 
+  
+  // 에디터 컨테이너는 z-index를 낮게(z-10) 설정
+  '<label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 상세 설명</label><div id="dev-quill-container" class="mb-6 bg-white border border-gray-200 r24 relative z-10" style="height: 250px;"></div><input type="hidden" id="dev-edit-id" value="'+(data?data.id:'')+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button onclick="submitDevProject()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">'+(data?'수정':'생성')+'</button></div></div>');
+  
   openModal('dev-modal');
   populateAssignees('dev-assignees-container',data?data.assignees:'');
   
-  // 🌟 Quill 에디터 적용
   setTimeout(function(){
     devQuillEditor = new Quill('#dev-quill-container', editorOptions);
     if(data && data.note) devQuillEditor.root.innerHTML = data.note;
   }, 100);
 }
 
+// 1-2. 프로젝트 생성/수정 시 기존 진행률 유지
 function submitDevProject(){
   var id=document.getElementById('dev-edit-id').value;
   var title=document.getElementById('dev-title').value.trim();
   if(!title) return showToast("프로젝트명을 입력하세요.");
-  var progressEl = document.getElementById('dev-progress');
   
   var fields={
     title:title, status:document.getElementById('dev-status').value, 
-    progress: progressEl ? (Number(progressEl.value)||0) : 0, 
     assignees:getChecked('dev-assignees-container'), 
-    deadline: document.getElementById('dev-deadline-main').value, // 마감일 수집
-    note: devQuillEditor.root.innerHTML, // 에디터 HTML 수집
+    deadline: document.getElementById('dev-deadline-main').value,
+    note: devQuillEditor.root.innerHTML,
     tags:document.getElementById('dev-tags-input').value, priority:document.getElementById('dev-priority-select').value
   };
   
   if(id){
     var idx=CACHE.devProjects.findIndex(function(x){return x.id===id;});
-    if(idx>-1) Object.assign(CACHE.devProjects[idx],fields);
+    if(idx>-1) Object.assign(CACHE.devProjects[idx],fields); // 기존 진행률(progress) 보존됨
     closeModal('dev-modal');showToast("수정 완료!");renderDevProjects();FB.patch('devProjects/'+id,fields);
   }else{
     var newId=genId();
     var tId=getNextTicketId(CACHE.devProjects, 'DEV');
-    var obj=Object.assign({id:newId, ticketId:tId, images:[]},fields,{creator:USER.email,timestamp:Date.now()});
+    // 새 프로젝트는 진행률 0으로 시작
+    var obj=Object.assign({id:newId, ticketId:tId, images:[], progress:0},fields,{creator:USER.email,timestamp:Date.now()});
     CACHE.devProjects.push(obj); closeModal('dev-modal');showToast("생성 완료 ("+tId+")");renderDevProjects();FB.set('devProjects/'+newId,obj);
   }
 }
 
-function openDevDetail(id){
-  var d=CACHE.devProjects.find(function(x){return String(x.id)===String(id);});if(!d)return;
-  if(!d.images) d.images = [];
-  var cList=Object.keys(CACHE.comments||{}).map(function(k){return CACHE.comments[k];}).filter(function(c){return c.targetId===id;}).sort(function(a,b){return new Date(a.date)-new Date(b.date);});
-  var tBadge = d.ticketId ? '<span class="text-blue-600 mr-2 text-sm bg-blue-100 px-2 py-1 r20 font-black">['+d.ticketId+']</span>' : '';
-  
-  // 에디터 내용 렌더링
-  var noteHtml = d.note && d.note.includes('<') ? d.note : esc(d.note||'내용 없음');
 
-  var leftHtml = '<div class="flex-1 p-8 md:p-10 overflow-y-auto"><div class="flex items-center gap-2 mb-2">'+tBadge+priorityHtml(d.priority,'md')+'</div><h2 class="text-xl md:text-3xl font-black text-gray-900 mb-4 pr-10">'+esc(d.title)+'</h2><div class="flex gap-2 flex-wrap mb-4">'+tagHtml(d.tags)+'<span class="text-xs px-3 py-1 r20 font-black '+(DEV_STATUS_META[d.status]||DEV_STATUS_META['보류']).badge+'">'+d.status+'</span>'+(d.deadline?'<span class="text-xs px-3 py-1 r20 font-black bg-red-50 text-red-600"><i class="ri-calendar-line"></i> 마감: '+d.deadline+'</span>':'')+'</div><div class="grid grid-cols-1 gap-4 mb-6 bg-gray-50 p-5 r24 text-sm"><div><span class="text-gray-400 text-xs font-bold">진행률</span><div class="flex items-center gap-2 mt-1"><div class="flex-1 progress-bar"><div class="progress-fill" style="width:'+(d.progress||0)+'%"></div></div><span class="text-sm font-black text-blue-600">'+(d.progress||0)+'%</span></div></div><div><span class="text-gray-400 text-xs font-bold">담당자</span><div class="flex gap-1 mt-1">'+avatarHtml(d.assignees,8)+'</div></div></div><div class="mb-6 border-t border-gray-100 pt-5"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2 mb-3"><i class="ri-list-check-2 text-blue-500"></i> 카테고리별 세부 업무</h3><div id="dev-task-list" class="space-y-3 mb-4 max-h-[300px] overflow-y-auto hide-scrollbar"></div><div class="flex gap-2 bg-gray-50 p-3 r20"><input type="text" id="dev-task-cat" placeholder="분류(예: 기획)" class="w-1/4 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="text" id="dev-task-text" placeholder="업무 내용 입력" class="flex-1 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="date" id="dev-task-deadline" class="w-32 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><button onclick="addDevProjectTask(\''+d.id+'\')" class="bg-blue-600 text-white px-4 py-2 r20 text-xs font-bold hover:bg-blue-700 shadow-sm">추가</button></div></div><div class="bg-white border border-gray-200 p-5 r24 mb-6"><p class="text-xs font-black text-blue-500 mb-4 border-b pb-2">상세 설명 (에디터)</p><div class="ql-editor p-0 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">'+noteHtml+'</div></div>' + 
-  // 🌟 개발프로젝트 이미지 갤러리 섹션
-  '<div class="mb-8 border-t pt-6"><div class="flex justify-between items-center mb-4"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2"><i class="ri-image-add-fill text-blue-500"></i> 첨부 이미지</h3><label class="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 r20 text-xs font-bold transition">+ 사진 올리기<input type="file" class="hidden" accept="image/*" onchange="handleDevImage(this, \''+d.id+'\')"></label></div><div class="grid grid-cols-2 md:grid-cols-3 gap-3">' + (d.images.length===0 ? '<p class="text-xs text-gray-400 col-span-3 py-4">첨부된 사진이 없습니다.</p>' : d.images.map(img => `<a href="${img}" target="_blank" class="block aspect-video bg-gray-100 r20 overflow-hidden border border-gray-200 hover:border-blue-400 transition"><img src="${img}" class="w-full h-full object-cover object-center"></a>`).join('')) + '</div></div>' +
-  '<div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-detail-modal\');openDevModal(CACHE.devProjects.find(function(x){return x.id===\''+d.id+'\';}))" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">수정</button><button onclick="confirmDeleteDev2(\''+d.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold hover:bg-red-100 transition">삭제</button></div></div>';
-  
-  var rightHtml = '<div class="w-full md:w-[360px] bg-gray-50 border-l p-8 flex flex-col h-[600px] md:h-auto"><h3 class="font-black text-lg mb-4 text-gray-800"><i class="ri-chat-3-fill text-blue-500 mr-2"></i>업무 코멘트 / 멘션</h3><div id="dev-cmt-list" class="flex-1 overflow-y-auto space-y-3 hide-scrollbar mb-4">'+(cList.length?cList.map(function(c){var ctext = esc(c.content).replace(/@([^\s]+)/g, '<span class="text-blue-600 font-bold bg-blue-100 px-1 r20">@$1</span>');return'<div class="bg-white p-4 r20 shadow-sm border border-gray-100"><div class="flex justify-between items-center mb-1"><span class="font-black text-xs text-gray-800">'+c.authorName+'</span><span class="text-[10px] text-gray-400">'+c.date+'</span></div><p class="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">'+ctext+'</p></div>';}).join(''):'<p class="text-xs text-gray-400 text-center py-10">댓글이 없습니다.<br>@이름 으로 팀원을 호출해 보세요.</p>')+'</div><div class="relative"><textarea id="dev-cmt-in" rows="3" placeholder="@이름 으로 멘션, 내용 입력..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-blue-400 shadow-sm bg-white"></textarea><button onclick="submitDevComment(\''+d.id+'\')" class="absolute bottom-4 right-4 bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-blue-700 transition"><i class="ri-send-plane-fill text-sm"></i></button></div></div>';
-
-  renderModalRoot('dev-detail-modal','<div class="bg-white r35 modal-content max-w-6xl p-0 shadow-2xl relative fade-in flex flex-col md:flex-row overflow-hidden"><button onclick="closeModal(\'dev-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black z-10"><i class="ri-close-line text-3xl"></i></button>'+leftHtml+rightHtml+'</div>');
-  openModal('dev-detail-modal'); renderDevProjectTasks(d.id); var cl=document.getElementById('dev-cmt-list');if(cl)cl.scrollTop=cl.scrollHeight;
-}
 
 // 📸 개발 프로젝트 - 이미지 업로드 처리 함수
 function handleDevImage(input, devId) {
@@ -1061,38 +1093,99 @@ function toggleApprUrgent(){
     if(warn)warn.classList.add('hidden');
   }
 }
+// 3-1. 지출결의서 입력폼 (회계 전문용어 적용)
 function addApprItemRow(){
-  var bankOpts='<option value="">은행</option><option>국민은행</option><option>신한은행</option><option>우리은행</option><option>하나은행</option><option>농협은행</option><option>기업은행</option><option>카카오뱅크</option><option>토스뱅크</option><option>기타</option>';
+  var bankOpts='<option value="">은행선택</option><option>국민은행</option><option>신한은행</option><option>우리은행</option><option>하나은행</option><option>농협은행</option><option>기업은행</option><option>카카오뱅크</option><option>토스뱅크</option><option>기타</option>';
   var html='<div class="appr-item-row bg-gray-50 border border-gray-100 p-5 r35 relative mb-3">'+
     '<button onclick="this.parentElement.remove()" class="absolute top-4 right-4 text-gray-300 hover:text-red-500"><i class="ri-close-circle-fill text-xl"></i></button>'+
-    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">지출 사유</label>'+
-    '<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">'+
-    '<select class="appr-reason-select border p-3 r24 text-sm font-bold outline-none bg-white" onchange="var row=this.closest(\'.appr-item-row\');row.querySelector(\'.appr-reason-custom\').classList.toggle(\'hidden\',this.value!==\'기타\');">'+
-    '<option value="">분류 선택 *</option><option value="식대">식대</option><option value="교통/유류비">교통/유류비</option><option value="사무용품/비품">사무용품/비품</option><option value="소프트웨어/구독">소프트웨어/구독</option><option value="회의비">회의비</option><option value="접대비">접대비</option><option value="출장비">출장비</option><option value="기타">기타</option></select>'+
-    '<input type="text" class="appr-reason-custom hidden border p-3 r24 text-sm outline-none bg-white" placeholder="기타 사유 입력"></div>'+
-    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">상세 내역 및 영수증 첨부</label>'+
-    // 상세내역과 파일첨부를 flex로 묶어서 나란히 배치했습니다.
-    '<div class="flex flex-col md:flex-row gap-2 mb-3">'+
-    '<input type="text" class="appr-detail flex-1 border p-3 r24 text-sm outline-none bg-white" placeholder="예: 4/3 점심 팀 회식 5명, 택시비 강남→판교, AWS 월 구독료 등">'+
-    '<div class="flex items-center bg-white border border-blue-200 p-2 r24 overflow-hidden shrink-0 md:w-64 cursor-pointer hover:bg-blue-50 transition"><i class="ri-attachment-line text-blue-500 ml-2 mr-2"></i><input type="file" class="appr-file text-xs w-full outline-none cursor-pointer" accept="image/*,application/pdf"></div>'+
+    
+    '<div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">'+
+      '<div><label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1 pl-1">지출일자</label><input type="date" class="appr-spend-date w-full border p-3 r24 text-sm outline-none bg-white"></div>'+
+      '<div><label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1 pl-1">계정과목 (분류)</label><select class="appr-reason-select w-full border p-3 r24 text-sm font-bold outline-none bg-white" onchange="var row=this.closest(\'.appr-item-row\');row.querySelector(\'.appr-reason-custom\').classList.toggle(\'hidden\',this.value!==\'기타\');">'+
+      '<option value="">선택 *</option><option value="복리후생비(식대/간식)">복리후생비 (식대/간식)</option><option value="여비교통비(출장/유류)">여비교통비 (출장/유류)</option><option value="소모품비(비품/사무용품)">소모품비 (비품/사무용품)</option><option value="지급수수료(구독/이체)">지급수수료 (구독/소프트웨어)</option><option value="접대비(외부미팅/선물)">접대비 (외부미팅/선물)</option><option value="기타">기타</option></select><input type="text" class="appr-reason-custom hidden w-full border p-3 r24 mt-2 text-sm outline-none bg-white" placeholder="기타 계정 직접 입력"></div>'+
+      '<div><label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1 pl-1">결제수단 / 증빙</label><select class="appr-pay-method w-full border p-3 r24 text-sm font-bold outline-none bg-white">'+
+      '<option value="법인카드 (영수증)">법인카드 (영수증)</option><option value="개인카드 (환급)">개인카드 (환급)</option><option value="현금 (지출결의)">현금 (지출결의)</option><option value="세금계산서 (청구)">세금계산서 (청구)</option></select></div>'+
     '</div>'+
-    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">결제 수단</label>'+
-    '<div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">'+
-    '<select class="appr-pay-method border p-3 r24 text-sm font-bold outline-none bg-white">'+
-    '<option value="법인카드">법인카드</option><option value="개인카드 (환급)">개인카드 (환급)</option><option value="현금 (환급)">현금 (환급)</option><option value="계좌이체">계좌이체</option></select>'+
-    '<input type="text" class="appr-pay-detail border p-3 r24 text-sm outline-none bg-white" placeholder="카드번호 뒤 4자리 / 참고사항"></div>'+
-    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2 pl-1">입금 정보</label>'+
+
+    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1 pl-1">적요 (상세내역) 및 영수증 첨부</label>'+
+    '<div class="flex flex-col md:flex-row gap-2 mb-3">'+
+      '<input type="text" class="appr-detail flex-1 border p-3 r24 text-sm outline-none bg-white" placeholder="어디서, 누구와, 무엇을 위해 지출했는지 상세히 기재">'+
+      '<div class="flex items-center bg-white border border-blue-200 p-2 r24 overflow-hidden shrink-0 md:w-64 cursor-pointer hover:bg-blue-50 transition"><i class="ri-attachment-line text-blue-500 ml-2 mr-2"></i><input type="file" class="appr-file text-xs w-full outline-none cursor-pointer" accept="image/*,application/pdf"></div>'+
+    '</div>'+
+    
+    '<label class="block text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1 pl-1">입금 정보 (환급/청구시 작성)</label>'+
     '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">'+
-    '<select class="appr-bank border p-3 r24 text-sm font-bold outline-none bg-white">'+bankOpts+'</select>'+
-    '<input type="text" class="appr-account border p-3 r24 text-sm font-bold bg-white" placeholder="계좌번호">'+
-    '<input type="number" class="appr-amount border p-3 r24 text-base font-black text-green-600 bg-white" placeholder="금액(원)">'+
+      '<select class="appr-bank border p-3 r24 text-sm font-bold outline-none bg-white">'+bankOpts+'</select>'+
+      '<input type="text" class="appr-account border p-3 r24 text-sm font-bold bg-white" placeholder="계좌번호 (숫자만)">'+
+      '<input type="number" class="appr-amount border p-3 r24 text-base font-black text-green-600 bg-white" placeholder="청구 금액(원)">'+
     '</div></div>';
   var c2=document.getElementById('appr-items-container');if(c2)c2.insertAdjacentHTML('beforeend',html);
 }
 
+// 3-2. 데이터 묶어서 제출
+async function submitApprovalBulk(){
+  var a1=document.getElementById('appr-approver1')?document.getElementById('appr-approver1').value:'';
+  var a2=document.getElementById('appr-approver2')?document.getElementById('appr-approver2').value:'';
+  var date=document.getElementById('appr-date')?document.getElementById('appr-date').value:'';
+  if(!a1||!date){showToast("1차 결재권자와 입금일 필수");return;}
+  var rows=document.querySelectorAll('.appr-item-row');if(!rows.length){showToast("최소 1항목 필요");return;}
+  var valid=true;
+  rows.forEach(function(row){
+      var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;
+      var reason=rs==='기타'?rc:rs;
+      var amount=row.querySelector('.appr-amount').value;
+      if(!reason||!amount){showToast("계정과목과 금액은 필수입니다");valid=false;}
+  });
+  if(!valid) return;
 
+  var isUrgent=document.getElementById('appr-is-urgent').checked;
+  var btn = document.getElementById('btn-submit-appr');
+  if(btn) { btn.disabled = true; btn.innerText = "⏳ 파일 업로드 및 처리 중..."; }
 
-// [결재 상세창 + 영수증/결제수단/긴급뱃지 표시]
+  for(var i=0; i<rows.length; i++) {
+    var row = rows[i];
+    var rs=row.querySelector('.appr-reason-select').value,rc=row.querySelector('.appr-reason-custom').value;
+    var reason=rs==='기타'?rc:rs;
+    var fileInput=row.querySelector('.appr-file');
+    var fileUrl = '';
+
+    if(fileInput && fileInput.files && fileInput.files[0]) {
+      try {
+        var file = fileInput.files[0];
+        var storageRef = firebase.storage().ref('receipts/' + Date.now() + '_' + file.name);
+        await storageRef.put(file);
+        fileUrl = await storageRef.getDownloadURL();
+      } catch(e) { 
+        console.error("스토리지 에러:", e); 
+        alert("파일 업로드 실패!");
+        if(btn) { btn.disabled = false; btn.innerText = "결재 올리기"; }
+        return; 
+      }
+    }
+
+    var id=genId();
+    var obj={
+      id:id, 
+      reason:reason, // 계정과목
+      spendDate:row.querySelector('.appr-spend-date').value || '', // 지출일자
+      detail:row.querySelector('.appr-detail').value, // 적요
+      payMethod:row.querySelector('.appr-pay-method').value, // 결제수단
+      bank:row.querySelector('.appr-bank').value, account:row.querySelector('.appr-account').value,
+      amount:row.querySelector('.appr-amount').value, approver1:a1, approver2:a2||'',
+      date:date, isUrgent:isUrgent,
+      drafter:USER.email, drafterName:USER.name, status:'대기', 
+      dateCreated:Date.now(), // 🌟 밀리초 타임스탬프 (나중에 기안일시로 변환)
+      fileUrl: fileUrl
+    };
+    CACHE.approval.push(obj);
+    FB.set('approvals/'+id, obj);
+  }
+  
+  if(btn) { btn.disabled = false; btn.innerText = "결재 올리기"; }
+  closeModal('approval-modal'); showToast("제출 완료!"); updateBadges(); renderApproval();
+}
+
+// [최종 완성본] 결재 상세창 (기안일시 및 회계/세무 뷰 반영)
 function openApprovalDetail(id){
   var d=CACHE.approval.find(function(x){return x.id===id;});
   if(!d)return;
@@ -1103,18 +1196,23 @@ function openApprovalDetail(id){
 
   var urgentBadge = d.isUrgent ? '<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black ml-2 align-middle">긴급</span>' : '';
   
+  // 🌟 기안일시 포맷팅 (YYYY-MM-DD HH:MM)
+  var createTimeStr = fmtDT(d.dateCreated);
+
   var html='<div class="bg-white r35 modal-content max-w-lg p-8 shadow-2xl fade-in">' +
     '<div class="flex justify-between items-start mb-6">' +
       '<div>' + statusBadge(d.status) + urgentBadge + '<h2 class="text-2xl font-black mt-2">' + esc(d.reason) + '</h2></div>' +
       '<button onclick="closeModal(\'appr-detail-modal\')" class="text-gray-400 hover:text-gray-600 text-2xl"><i class="ri-close-line"></i></button>' +
     '</div>' +
     '<div class="space-y-4 mb-8">' +
-      '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">기안자</span><span class="font-black">' + d.drafterName + '</span></div>' +
-      '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">금액</span><span class="font-black text-blue-600">₩' + Number(d.amount).toLocaleString() + '</span></div>' +
-      '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">계좌정보</span><span class="text-sm">' + d.bank + ' ' + d.account + '</span></div>' +
-      (d.payMethod ? '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">결제수단</span><span class="text-sm">'+esc(d.payMethod)+(d.payDetail?' ('+esc(d.payDetail)+')':'')+'</span></div>' : '') +
-      (d.fileUrl ? '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">영수증</span><a href="'+d.fileUrl+'" target="_blank" class="text-blue-600 font-bold text-sm hover:underline"><i class="ri-attachment-line"></i> 첨부파일 보기</a></div>' : '') +
-      '<div class="py-2"><span class="text-gray-500 font-bold block mb-1">상세내용</span><p class="text-sm bg-gray-50 p-3 r20">' + esc(d.detail || d.note || '내용 없음') + '</p></div>' +
+      // 🌟 회계사들이 확인하기 좋게 용어 및 배치 변경 완료!
+      '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">기안자 (기안일시)</span><span class="font-black text-right">' + d.drafterName + '<br><span class="text-[10px] text-gray-400 font-normal">'+createTimeStr+'</span></span></div>' +
+      (d.spendDate ? '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">지출 일자</span><span class="text-sm font-bold">' + d.spendDate + '</span></div>' : '') +
+      '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">청구 금액</span><span class="font-black text-blue-600 text-lg">₩' + Number(d.amount).toLocaleString() + '</span></div>' +
+      (d.payMethod ? '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">결제 수단</span><span class="text-sm font-bold">'+esc(d.payMethod)+'</span></div>' : '') +
+      ((d.bank && d.account) ? '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">입금 계좌</span><span class="text-sm">' + d.bank + ' ' + d.account + '</span></div>' : '') +
+      (d.fileUrl ? '<div class="flex justify-between border-b pb-2"><span class="text-gray-500 font-bold">증빙 자료</span><a href="'+d.fileUrl+'" target="_blank" class="text-blue-600 font-bold text-sm hover:underline"><i class="ri-attachment-line"></i> 영수증 보기</a></div>' : '') +
+      '<div class="py-2"><span class="text-gray-500 font-bold block mb-1">적요 (상세내용)</span><p class="text-sm bg-gray-50 p-4 r24 leading-relaxed">' + esc(d.detail || d.note || '내용 없음') + '</p></div>' +
     '</div>';
 
   if(isMyTurn){
