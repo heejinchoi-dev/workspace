@@ -7,6 +7,8 @@ firebase.initializeApp(firebaseConfig);var auth=firebase.auth(),db=firebase.data
 // 아래처럼 변경 (products:[] 추가)
 var USER=null,CACHE={tasks:[],devProjects:[],sprints:[],crm:[],cs:[],schedules:[],approval:[],leaves:[],vault:[],comments:{},members:[],wiki:[],products:[],leaveInfo:{total:15,used:0,remain:15}};
 var devView='board',confirmCb=null,chartCRM=null,chartTasks=null,activeNoticeId=null;
+var teamTaskViewMode = 'list';
+var isInitialLoad = true;
 /*═══════════ Util ═══════════*/
 function esc(s) {
   if (!s) return '';
@@ -457,9 +459,6 @@ function submitQuickLink(){
 // ═══════════════════════════════════════════════
 var calendar = null;
 
-// 🌟 팀 업무 뷰 상태를 저장하는 전역 변수 추가 (맨 위쪽에 넣어도 되고 여기 둬도 됩니다)
-var teamTaskViewMode = 'list'; // 'list' 또는 'board'
-
 // 1. 달력/업무 탭의 전체 틀을 잡는 함수
 function renderCalendar() {
   var el = document.getElementById('tab-calendar');
@@ -512,11 +511,6 @@ function renderCalendar() {
   setupMention('my-todo-input');
 }
 
-// 2. 리스트/보드 뷰를 전환하는 전용 함수
-function changeTeamView(mode) {
-  teamTaskViewMode = mode;
-  renderTeamProjectBoard();
-}
 
 // 3. 실제 전사 업무 데이터를 화면에 그리는 함수
 function renderTeamProjectBoard() {
@@ -1812,31 +1806,32 @@ function toggleDarkMode(){
 }
 
 function setupRealtimeListeners() {
-  // 1. 코멘트(댓글)에서 나를 멘션했을 때
+  // 1. 코멘트 멘션 알림
   db.ref('comments').on('child_added', function(snap) {
     if(isInitialLoad) return;
     var c = snap.val();
-    if(c.authorName !== USER.name && c.content.indexOf('@'+USER.name) > -1) {
+    if(c && c.authorName !== USER.name && c.content && c.content.indexOf('@'+USER.name) > -1) {
       showToast("🔔 " + c.authorName + "님이 회원님을 호출했습니다.");
       sendNativeNotification("워크스페이스 알림", c.authorName + "님이 코멘트에서 호출했습니다.");
       refreshNotifBadge(); 
     }
   });
 
-  // 2. 내 휴가/결재 상태가 변경되었을 때
+  // 2. 내 휴가/결재 상태 변경 알림
   db.ref('leaves').on('child_changed', function(snap) {
+    if(isInitialLoad) return; // 🌟 이 줄을 추가하여 초기 로딩 시 알림 방지
     var l = snap.val();
-    if(l.applicant === USER.email) {
+    if(l && l.applicant === USER.email) {
       showToast("🔔 휴가 신청 상태 변경: [" + l.status + "]");
       sendNativeNotification("결재 알림", "내 휴가 신청이 [" + l.status + "] 처리되었습니다.");
     }
   });
   
-  // 3. 결재 건이 나에게 왔을 때 (추가)
+  // 3. 결재 요청 알림
   db.ref('approvals').on('child_added', function(snap) {
     if(isInitialLoad) return;
     var d = snap.val();
-    if((d.approver1 === USER.email && d.status === '대기') || (d.approver2 === USER.email && d.status === '1차 승인')) {
+    if(d && ((d.approver1 === USER.email && d.status === '대기') || (d.approver2 === USER.email && d.status === '1차 승인'))) {
       showToast("📝 새 결재 대기 건이 도착했습니다.");
       sendNativeNotification("결재 대기", d.drafterName + "님이 결재를 요청했습니다.");
     }
@@ -2244,8 +2239,8 @@ function listenRealtimeTasks() {
 function initApp(){
   showSkeleton();
   
-  // 실시간 리스너 켜기 (여기서 딱 1번 실행)
-  listenRealtimeTasks(); 
+  // 🌟 실시간 리스너 실행 (이게 있어야 데이터가 즉시 반영됩니다)
+  if(typeof listenRealtimeTasks === 'function') listenRealtimeTasks(); 
 
   var nodes=['tasks','devProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices','quickLinks','products'];
   var results={}, idx=0;
@@ -2557,11 +2552,6 @@ function sendNativeNotification(title, body) {
   }
 }
 
-// 뷰 전환 전용 함수
-function changeTeamView(mode) {
-  teamTaskViewMode = mode;
-  renderTeamProjectBoard();
-}
 
 function renderTeamProjectBoard() {
   var el = document.getElementById('team-project-tracking-board');
@@ -2614,6 +2604,12 @@ function renderTeamProjectBoard() {
         </div>`;
     }).join('') + `</div>`;
   }
+}
+
+// 🌟 뷰 전환 전용 함수 (이게 있어야 리스트/보드 전환이 됩니다)
+function changeTeamView(mode) {
+  teamTaskViewMode = mode;
+  renderTeamProjectBoard();
 }
 
 // 끝
