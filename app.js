@@ -1214,12 +1214,17 @@ function renderApproval() {
   var fStatus = document.getElementById('appr-status-filter').value;
   var fUser = document.getElementById('appr-user-search').value.toLowerCase();
 
-  var filtered = CACHE.approval.filter(function(d) {
-    return matchMonth(d.dateCreated, fMonth) &&
+var filtered = CACHE.approval.filter(function(d) {
+    var canSee = USER.role === 'ADMIN' ||
+                 (d.drafter||'').toLowerCase() === USER.email.toLowerCase() ||
+                 (d.approver1||'').toLowerCase() === USER.email.toLowerCase() ||
+                 (d.approver2||'').toLowerCase() === USER.email.toLowerCase();
+    return canSee &&
+           matchMonth(d.dateCreated, fMonth) &&
            (fCat === 'all' || d.reason === fCat) &&
            (fStatus === 'all' || d.status === fStatus) &&
            (d.drafterName.toLowerCase().includes(fUser));
-  });
+});
 
   var totalAmount = filtered.reduce((acc, cur) => acc + Number(cur.amount || 0), 0);
 
@@ -2813,3 +2818,12 @@ function sendNativeNotification(title, body) {
   else if (Notification.permission !== "denied") { Notification.requestPermission().then(p => { if (p === "granted") new Notification(title, { body: body, icon: 'https://i.imgur.com/gzXQ8nD.png' }); }); }
 }
 /*═══════════ [THE END] ═══════════*/
+
+function markNotifAsRead(notifId, action) {
+  var readNotifs = JSON.parse(localStorage.getItem('read_notifs_' + USER.email)) || [];
+  if (!readNotifs.includes(notifId)) readNotifs.push(notifId);
+  localStorage.setItem('read_notifs_' + USER.email, JSON.stringify(readNotifs));
+  closeModal('notif-modal');
+  refreshNotifBadge();
+  if (typeof action === 'function') action(); // 해당 탭/모달로 이동
+}
