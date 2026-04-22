@@ -966,8 +966,86 @@ function handleDevImage(input, devId) {
 //  CRM
 // ═══════════════════════════════════════════════
 var CRM_COLUMNS=[{label:'잠재고객(Lead)',key:'Lead',cls:'text-gray-500'},{label:'연락/미팅(Contact)',key:'Contact',cls:'text-blue-500'},{label:'제안/견적(Proposal)',key:'Proposal',cls:'text-purple-500'},{label:'계약성공(Won)',key:'Won',cls:'text-emerald-600'}];
-function initCRMTab(){var el=document.getElementById('tab-crm');if(el.querySelector('#col-crm-Lead'))return;el.innerHTML='<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3"><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-briefcase-4-fill text-emerald-500 mr-2"></i> 영업 파이프라인</h1><div class="flex items-center gap-3 flex-wrap"><input type="text" id="crm-search" oninput="filterCRM()" placeholder="고객사명 검색..." class="px-4 py-3 border r35 text-sm outline-none w-48 bg-white card-shadow"><button onclick="openCRMModal()" class="bg-emerald-500 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-emerald-600 transition">+ 영업 리드 등록</button></div></div><div class="flex gap-4 flex-1 pb-6 overflow-x-auto hide-scrollbar">'+CRM_COLUMNS.map(function(col){return'<div class="flex-1 min-w-[260px] bg-white p-5 r35 card-shadow flex flex-col"><h2 class="font-black '+col.cls+' text-sm uppercase mb-4 px-2 tracking-wider">'+col.label+'</h2><div id="col-crm-'+col.key+'" class="flex-1 space-y-4 overflow-y-auto hide-scrollbar"></div></div>';}).join('')+'</div>';}
-function filterCRM(){initCRMTab();var k=(document.getElementById('crm-search')||{value:''}).value.toLowerCase();renderCRMUI(CACHE.crm.filter(function(c){return(c.company||'').toLowerCase().indexOf(k)>-1||(c.contactName||'').toLowerCase().indexOf(k)>-1;}));}
+function initCRMTab(){
+  var el=document.getElementById('tab-crm');
+  if(el.querySelector('#col-crm-Lead'))return;
+  el.innerHTML=
+    // 헤더 영역
+    '<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-3">'+
+      '<h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-briefcase-4-fill text-emerald-500 mr-2"></i> 영업 파이프라인</h1>'+
+      '<div class="flex items-center gap-3 flex-wrap">'+
+        '<input type="text" id="crm-search" oninput="filterCRM()" placeholder="고객사명 검색..." class="px-4 py-3 border r35 text-sm outline-none w-48 bg-white card-shadow">'+
+        '<button onclick="openCRMModal()" class="bg-emerald-500 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-emerald-600 transition">+ 영업 리드 등록</button>'+
+      '</div>'+
+    '</div>'+
+
+    // ─── B2X 필터 탭 ───
+    // B2B: 기업 및 브랜드 | B2G: 공공기관 | B2C: 소상공인 | B2S: 학교/교육기관
+    '<div class="flex gap-2 mb-6 flex-wrap">'+
+      '<button id="crm-b2-all" onclick="setCRMB2Filter(\'all\')" class="crm-b2-tab px-5 py-2.5 r35 text-xs font-black border-2 border-emerald-500 bg-emerald-500 text-white shadow-sm transition">전체</button>'+
+      '<button id="crm-b2-B2B" onclick="setCRMB2Filter(\'B2B\')" class="crm-b2-tab px-5 py-2.5 r35 text-xs font-black border-2 border-gray-200 bg-white text-gray-500 hover:border-emerald-300 transition">'+
+        'B2B <span class="text-[9px] font-normal ml-1 opacity-60">기업간거래</span>'+
+      '</button>'+
+      '<button id="crm-b2-B2G" onclick="setCRMB2Filter(\'B2G\')" class="crm-b2-tab px-5 py-2.5 r35 text-xs font-black border-2 border-gray-200 bg-white text-gray-500 hover:border-emerald-300 transition">'+
+        'B2G <span class="text-[9px] font-normal ml-1 opacity-60">공공/공기업</span>'+
+      '</button>'+
+      '<button id="crm-b2-B2C" onclick="setCRMB2Filter(\'B2C\')" class="crm-b2-tab px-5 py-2.5 r35 text-xs font-black border-2 border-gray-200 bg-white text-gray-500 hover:border-emerald-300 transition">'+
+        'B2C <span class="text-[9px] font-normal ml-1 opacity-60">소상공인</span>'+
+      '</button>'+
+      '<button id="crm-b2-B2S" onclick="setCRMB2Filter(\'B2S\')" class="crm-b2-tab px-5 py-2.5 r35 text-xs font-black border-2 border-gray-200 bg-white text-gray-500 hover:border-emerald-300 transition">'+
+        'B2S <span class="text-[9px] font-normal ml-1 opacity-60">학교/교육기관</span>'+
+      '</button>'+
+      // 건수 요약 배지
+      '<span id="crm-count-badge" class="ml-auto text-xs font-bold text-gray-400 self-center"></span>'+
+    '</div>'+
+
+    // 칸반 보드
+    '<div class="flex gap-4 flex-1 pb-6 overflow-x-auto hide-scrollbar">'+
+      CRM_COLUMNS.map(function(col){
+        return'<div class="flex-1 min-w-[260px] bg-white p-5 r35 card-shadow flex flex-col">'+
+          '<h2 class="font-black '+col.cls+' text-sm uppercase mb-4 px-2 tracking-wider">'+col.label+'</h2>'+
+          '<div id="col-crm-'+col.key+'" class="flex-1 space-y-4 overflow-y-auto hide-scrollbar"></div>'+
+        '</div>';
+      }).join('')+
+    '</div>';
+}
+// 현재 선택된 B2X 필터 상태 저장
+var currentB2Filter = 'all';
+
+function setCRMB2Filter(type) {
+  currentB2Filter = type;
+
+  // 탭 버튼 스타일 토글
+  document.querySelectorAll('.crm-b2-tab').forEach(function(btn) {
+    var isActive = btn.id === 'crm-b2-' + type;
+    btn.className = 'crm-b2-tab px-5 py-2.5 r35 text-xs font-black border-2 transition ' +
+      (isActive
+        ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm'
+        : 'border-gray-200 bg-white text-gray-500 hover:border-emerald-300');
+  });
+
+  filterCRM();
+}
+
+function filterCRM(){
+  initCRMTab();
+  var k=(document.getElementById('crm-search')||{value:''}).value.toLowerCase();
+
+  var filtered = CACHE.crm.filter(function(c){
+    // B2X 필터
+    var b2Match = currentB2Filter === 'all' || (c.b2Type || 'B2B') === currentB2Filter;
+    // 검색어 필터
+    var searchMatch = (c.company||'').toLowerCase().indexOf(k)>-1 ||
+                      (c.contactName||'').toLowerCase().indexOf(k)>-1;
+    return b2Match && searchMatch;
+  });
+
+  // 건수 배지 업데이트
+  var badge = document.getElementById('crm-count-badge');
+  if(badge) badge.innerText = '총 ' + filtered.length + '건';
+
+  renderCRMUI(filtered);
+}
 function renderCRMUI(data){
   var colMap={'잠재고객(Lead)':'col-crm-Lead','연락/미팅(Contact)':'col-crm-Contact','제안/견적(Proposal)':'col-crm-Proposal','계약성공(Won)':'col-crm-Won'};
   Object.values(colMap).forEach(function(id){var el=document.getElementById(id);if(el)el.innerHTML='';});
@@ -997,41 +1075,102 @@ function openCRMModal(data){
     </label>
   `).join('');
 
-  renderModalRoot('crm-modal','<div class="bg-white r35 modal-content max-w-lg p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black text-emerald-700 mb-6"><i class="ri-briefcase-4-fill"></i> '+(data?'고객사 수정':'고객사 등록')+'</h2>'+
+  var industryOpts = ['제조','유통','공공/공기업','서비스','식음료','기타'].map(v =>
+    `<option value="${v}" ${data && data.industry === v ? 'selected' : ''}>${v}</option>`
+  ).join('');
+
+  var sourceOpts = ['직접영업','소개','전시회/행사','광고/SNS','기타'].map(v =>
+    `<option value="${v}" ${data && data.leadSource === v ? 'selected' : ''}>${v}</option>`
+  ).join('');
+
+  renderModalRoot('crm-modal','<div class="bg-white r35 modal-content max-w-lg p-8 md:p-10 shadow-2xl fade-in overflow-y-auto max-h-[90vh]"><h2 class="text-xl md:text-2xl font-black text-emerald-700 mb-6"><i class="ri-briefcase-4-fill"></i> '+(data?'고객사 수정':'고객사 등록')+'</h2>'+
+
+    // 고객사명
     '<input id="crm-company" type="text" value="'+(data?esc(data.company):'')+'" placeholder="고객사명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50">'+
-    '<div class="grid grid-cols-2 gap-4 mb-4"><input id="crm-name" type="text" value="'+(data?esc(data.contactName||''):'')+'" placeholder="담당자" class="border p-4 r24 outline-none text-sm"><input id="crm-phone" type="text" value="'+(data?esc(data.phone||''):'')+'" placeholder="연락처" class="border p-4 r24 outline-none text-sm"></div>'+
-    
-    // B2B/B2G/B2C 선택 (라디오)
-    '<label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2">고객 구분</label>'+
-    '<div class="flex gap-3 mb-4">'+
-      ['B2B', 'B2G', 'B2C'].map(v => `<label class="flex-1 flex items-center justify-center gap-2 p-3 border r24 cursor-pointer hover:bg-emerald-50 transition bg-white font-bold text-sm text-gray-600 has-[:checked]:border-emerald-500 has-[:checked]:text-emerald-700 has-[:checked]:bg-emerald-50"><input type="radio" name="crm-b2-type" value="${v}" class="hidden" ${data && data.b2Type === v ? 'checked' : (!data && v === 'B2B' ? 'checked' : '')}>${v}</label>`).join('')+
+
+    // 담당자 / 연락처
+    '<div class="grid grid-cols-2 gap-4 mb-4">'+
+      '<input id="crm-name" type="text" value="'+(data?esc(data.contactName||''):'')+'" placeholder="담당자" class="border p-4 r24 outline-none text-sm">'+
+      '<input id="crm-phone" type="text" value="'+(data?esc(data.phone||''):'')+'" placeholder="연락처" class="border p-4 r24 outline-none text-sm">'+
     '</div>'+
 
-    // 사업 영역 (중복 체크박스)
+    // 이메일 (신규)
+    '<input id="crm-email" type="email" value="'+(data?esc(data.email||''):'')+'" placeholder="이메일 (예: contact@company.com)" class="w-full border p-4 r24 mb-4 outline-none text-sm bg-gray-50">'+
+
+    // 예상 계약금액 / 예상 클로징일 (신규)
+    '<div class="grid grid-cols-2 gap-4 mb-4">'+
+      '<div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">예상 계약금액 (원)</label>'+
+      '<input id="crm-expected-amount" type="number" value="'+(data?esc(data.expectedAmount||''):'')+'" placeholder="0" class="w-full border p-4 r24 outline-none text-sm bg-gray-50 text-emerald-700 font-bold"></div>'+
+      '<div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">다음 액션일</label>'+
+      '<input id="crm-next-action" type="date" value="'+(data?esc(data.nextActionDate||''):'')+'" class="w-full border p-4 r24 outline-none text-sm bg-gray-50"></div>'+
+    '</div>'+
+
+    // ─────────────────────────────────────────────
+    // 고객 구분 (B2X) 설명
+    // B2B (Business to Business) : 기업 및 브랜드 (제조사, 유통사 등)
+    // B2G (Business to Government) : 공공기관/지자체/공기업 대상 영업
+    // B2C (Business to Consumer) : 소상공인
+    // B2S (Business to School) : 학교/교육기관 대상 영업
+    // ─────────────────────────────────────────────
+    '<label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2">고객 구분</label>'+
+    '<div class="grid grid-cols-4 gap-2 mb-4">'+
+      ['B2B', 'B2G', 'B2C', 'B2S'].map(v => `
+       <label class="flex flex-col items-center justify-center gap-1 p-3 border r24 cursor-pointer hover:bg-emerald-50 transition bg-white font-bold text-sm text-gray-600 has-[:checked]:border-emerald-500 has-[:checked]:text-emerald-700 has-[:checked]:bg-emerald-50">
+         <input type="radio" name="crm-b2-type" value="${v}" class="hidden" ${data && data.b2Type === v ? 'checked' : (!data && v === 'B2B' ? 'checked' : '')}>
+         <span class="text-sm font-black">${v}</span>
+          <span class="text-[9px] font-normal text-gray-400">${
+            v==='B2B'?'기업 및 브랜드':
+            v==='B2G'?'공공/공기업':
+            v==='B2C'?'소상공인':
+            v==='B2S'?'학교/교육기관':''
+          }</span>
+        </label>
+      `).join('')+
+    '</div>'+
+
+    // 업종 / 유입 경로 (신규)
+    '<div class="grid grid-cols-2 gap-4 mb-4">'+
+      '<div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">업종</label>'+
+      '<select id="crm-industry" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50"><option value="">선택</option>'+industryOpts+'</select></div>'+
+      '<div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">유입 경로</label>'+
+      '<select id="crm-lead-source" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50"><option value="">선택</option>'+sourceOpts+'</select></div>'+
+    '</div>'+
+
+    // 관련 사업
     '<label class="block text-[10px] font-black text-gray-400 uppercase mb-2 ml-2">관련 사업 (중복 선택)</label>'+
     '<div class="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">'+serviceHtml+'</div>'+
 
+    // 상태
     '<select id="crm-status" class="w-full border p-4 r24 mb-4 outline-none text-sm font-bold bg-emerald-50 text-emerald-700"><option value="잠재고객(Lead)" '+((!data||data.status==='잠재고객(Lead)')?'selected':'')+'>잠재고객</option><option value="연락/미팅(Contact)" '+(data&&data.status==='연락/미팅(Contact)'?'selected':'')+'>연락/미팅</option><option value="제안/견적(Proposal)" '+(data&&data.status==='제안/견적(Proposal)'?'selected':'')+'>제안/견적</option><option value="계약성공(Won)" '+(data&&data.status==='계약성공(Won)'?'selected':'')+'>계약성공</option></select>'+
+
+    // 비고
     '<textarea id="crm-note" rows="3" placeholder="비고" class="w-full border p-4 r24 mb-6 outline-none text-sm">'+(data?esc(data.note||''):'')+'</textarea>'+
+
     '<input type="hidden" id="crm-edit-id" value="'+(data?data.id:'')+'">'+
-    '<div class="flex justify-end gap-3"><button onclick="closeModal(\'crm-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitCRM()" class="px-8 py-3.5 bg-emerald-600 text-white r35 text-sm font-bold shadow-lg">'+(data?'수정':'등록')+'</button></div></div>');openModal('crm-modal');
+    '<div class="flex justify-end gap-3"><button onclick="closeModal(\'crm-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitCRM()" class="px-8 py-3.5 bg-emerald-600 text-white r35 text-sm font-bold shadow-lg">'+(data?'수정':'등록')+'</button></div></div>');
+  openModal('crm-modal');
 }
+
 function submitCRM(){
   var id=document.getElementById('crm-edit-id').value;
   var co=document.getElementById('crm-company').value.trim();
   if(!co)return showToast("고객사명 입력");
   
-  // 체크된 사업 영역 가져오기
   var selectedServices = Array.from(document.querySelectorAll('.crm-service-cb:checked')).map(cb => cb.value).join(',');
-  // 라디오에서 선택된 고객 구분 가져오기
   var b2Type = document.querySelector('input[name="crm-b2-type"]:checked').value;
+  var expectedAmount = document.getElementById('crm-expected-amount').value;
 
   var f={
     company: co,
     contactName: document.getElementById('crm-name').value,
     phone: document.getElementById('crm-phone').value,
+    email: document.getElementById('crm-email').value,           // 신규
+    expectedAmount: expectedAmount ? Number(expectedAmount) : 0, // 신규
+    nextActionDate: document.getElementById('crm-next-action').value, // 신규
+    industry: document.getElementById('crm-industry').value,     // 신규
+    leadSource: document.getElementById('crm-lead-source').value, // 신규
     b2Type: b2Type,
-    serviceType: selectedServices, // 중복 선택된 사업 영역 저장
+    serviceType: selectedServices,
     status: document.getElementById('crm-status').value,
     note: document.getElementById('crm-note').value,
     manager: USER.email
@@ -1040,20 +1179,14 @@ function submitCRM(){
   if(id){
     var idx=CACHE.crm.findIndex(function(x){return x.id===id;});
     if(idx>-1)Object.assign(CACHE.crm[idx],f);
-    closeModal('crm-modal');
-    showToast("수정 완료!");
-    filterCRM();
-    FB.patch('crm/'+id,f);
+    closeModal('crm-modal'); showToast("수정 완료!"); filterCRM(); FB.patch('crm/'+id,f);
   }else{
     var nid=genId();
     var o=Object.assign({id:nid},f,{timestamp:Date.now()});
-    CACHE.crm.push(o);
-    closeModal('crm-modal');
-    showToast("등록 완료!");
-    filterCRM();
-    FB.set('crm/'+nid,o);
+    CACHE.crm.push(o); closeModal('crm-modal'); showToast("등록 완료!"); filterCRM(); FB.set('crm/'+nid,o);
   }
 }
+
 function openCRMDetail(id){
   var d=CACHE.crm.find(function(x){return String(x.id)===String(id);});if(!d)return;
   var cList=Object.keys(CACHE.comments||{}).map(function(k){return CACHE.comments[k];}).filter(function(c){return c.targetId===id;}).sort(function(a,b){return new Date(a.date)-new Date(b.date);});
