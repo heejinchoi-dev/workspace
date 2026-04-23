@@ -873,11 +873,21 @@ function openDevDetail(id){
   if(!d.images) d.images = [];
   var cList=Object.keys(CACHE.comments||{}).map(function(k){return CACHE.comments[k];}).filter(function(c){return c.targetId===id;}).sort(function(a,b){return new Date(a.date)-new Date(b.date);});
   var tBadge = d.ticketId ? '<span class="text-blue-600 mr-2 text-sm bg-blue-100 px-2 py-1 r20 font-black">['+d.ticketId+']</span>' : '';
-  var noteHtml = d.note && d.note.includes('<') ? d.note : esc(d.note||'내용 없음');
+  // 마크다운이면 파싱, HTML이면 그대로 표시
+  var noteHtml = '';
+    if(!d.note || d.note.trim() === '') {
+     noteHtml = '<p class="text-gray-400 text-sm">내용 없음</p>';
+    } else if(d.note.startsWith('<')) {
+  // 기존 Quill HTML 데이터 호환
+     noteHtml = d.note;
+    } else {
+  // 마크다운 렌더링
+     noteHtml = marked.parse(d.note);
+     }
 
   var leftHtml = '<div class="flex-1 p-8 md:p-10 overflow-y-auto"><div class="flex items-center gap-2 mb-2">'+tBadge+priorityHtml(d.priority,'md')+'</div><h2 class="text-xl md:text-3xl font-black text-gray-900 mb-4 pr-10">'+esc(d.title)+'</h2><div class="flex gap-2 flex-wrap mb-4">'+tagHtml(d.tags)+'<span class="text-xs px-3 py-1 r20 font-black '+(DEV_STATUS_META[d.status]||DEV_STATUS_META['보류']).badge+'">'+d.status+'</span>'+(d.deadline?'<span class="text-xs px-3 py-1 r20 font-black bg-red-50 text-red-600"><i class="ri-calendar-line"></i> 마감: '+d.deadline+'</span>':'')+'</div>' + 
   // 🌟 게이지 바에 ID 부여
-  '<div class="grid grid-cols-1 gap-4 mb-6 bg-gray-50 p-5 r24 text-sm"><div><span class="text-gray-400 text-xs font-bold">진행률 (자동계산)</span><div class="flex items-center gap-2 mt-1"><div class="flex-1 progress-bar"><div id="dev-detail-progress-fill" class="progress-fill transition-all duration-500" style="width:'+(d.progress||0)+'%"></div></div><span id="dev-detail-progress-text" class="text-sm font-black text-blue-600">'+(d.progress||0)+'%</span></div></div><div><span class="text-gray-400 text-xs font-bold">담당자</span><div class="flex gap-1 mt-1">'+avatarHtml(d.assignees,8)+'</div></div></div><div class="mb-6 border-t border-gray-100 pt-5"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2 mb-3"><i class="ri-list-check-2 text-blue-500"></i> 카테고리별 세부 업무</h3><div id="dev-task-list" class="space-y-3 mb-4 max-h-[300px] overflow-y-auto hide-scrollbar"></div><div class="flex gap-2 bg-gray-50 p-3 r20"><input type="text" id="dev-task-cat" placeholder="분류(예: 기획)" class="w-1/4 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="text" id="dev-task-text" placeholder="업무 내용 입력" class="flex-1 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="date" id="dev-task-deadline" class="w-32 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><button onclick="addDevProjectTask(\''+d.id+'\')" class="bg-blue-600 text-white px-4 py-2 r20 text-xs font-bold hover:bg-blue-700 shadow-sm">추가</button></div></div><div class="bg-white border border-gray-200 p-5 r24 mb-6"><p class="text-xs font-black text-blue-500 mb-4 border-b pb-2">상세 설명 (에디터)</p><div class="ql-editor p-0 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">'+noteHtml+'</div></div>' + 
+  '<div class="grid grid-cols-1 gap-4 mb-6 bg-gray-50 p-5 r24 text-sm"><div><span class="text-gray-400 text-xs font-bold">진행률 (자동계산)</span><div class="flex items-center gap-2 mt-1"><div class="flex-1 progress-bar"><div id="dev-detail-progress-fill" class="progress-fill transition-all duration-500" style="width:'+(d.progress||0)+'%"></div></div><span id="dev-detail-progress-text" class="text-sm font-black text-blue-600">'+(d.progress||0)+'%</span></div></div><div><span class="text-gray-400 text-xs font-bold">담당자</span><div class="flex gap-1 mt-1">'+avatarHtml(d.assignees,8)+'</div></div></div><div class="mb-6 border-t border-gray-100 pt-5"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2 mb-3"><i class="ri-list-check-2 text-blue-500"></i> 카테고리별 세부 업무</h3><div id="dev-task-list" class="space-y-3 mb-4 max-h-[300px] overflow-y-auto hide-scrollbar"></div><div class="flex gap-2 bg-gray-50 p-3 r20"><input type="text" id="dev-task-cat" placeholder="분류(예: 기획)" class="w-1/4 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="text" id="dev-task-text" placeholder="업무 내용 입력" class="flex-1 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="date" id="dev-task-deadline" class="w-32 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><button onclick="addDevProjectTask(\''+d.id+'\')" class="bg-blue-600 text-white px-4 py-2 r20 text-xs font-bold hover:bg-blue-700 shadow-sm">추가</button></div></div><div class="bg-white border border-gray-200 p-5 r24 mb-6"><p class="text-xs font-black text-blue-500 mb-4 border-b pb-2">상세 설명 (에디터)</p><div class="prose prose-sm max-w-none text-gray-700 leading-relaxed">'+noteHtml+'</div></div>' + 
   '<div class="mb-8 border-t pt-6"><div class="flex justify-between items-center mb-4"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2"><i class="ri-image-add-fill text-blue-500"></i> 첨부 이미지</h3><label class="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 r20 text-xs font-bold transition">+ 사진 올리기<input type="file" class="hidden" accept="image/*" onchange="handleDevImage(this, \''+d.id+'\')"></label></div><div class="grid grid-cols-2 md:grid-cols-3 gap-3">' + (d.images.length===0 ? '<p class="text-xs text-gray-400 col-span-3 py-4">첨부된 사진이 없습니다.</p>' : d.images.map(img => `<a href="${img}" target="_blank" class="block aspect-video bg-gray-100 r20 overflow-hidden border border-gray-200 hover:border-blue-400 transition"><img src="${img}" class="w-full h-full object-cover object-center"></a>`).join('')) + '</div></div>' +
   '<div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-detail-modal\');openDevModal(CACHE.devProjects.find(function(x){return x.id===\''+d.id+'\';}))" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">수정</button><button onclick="confirmDeleteDev2(\''+d.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold hover:bg-red-100 transition">삭제</button></div></div>';
   
@@ -907,15 +917,35 @@ function openDevModal(data){
   '<div class="mb-6 relative z-50"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">참여 인원</label><div id="dev-assignees-container" class="w-full border p-4 r24 bg-white max-h-32 overflow-y-auto space-y-2 hide-scrollbar shadow-inner relative z-50"></div></div>' + 
   
   // 에디터 컨테이너는 z-index를 낮게(z-10) 설정
-  '<label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 상세 설명</label><div id="dev-quill-container" class="mb-6 bg-white border border-gray-200 r24 relative z-10" style="height: 250px;"></div><input type="hidden" id="dev-edit-id" value="'+(data?data.id:'')+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button onclick="submitDevProject()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">'+(data?'수정':'생성')+'</button></div></div>');
-  
+  '<label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 상세 설명 (마크다운)</label><textarea id="dev-md-editor"></textarea><input type="hidden" id="dev-edit-id" value="'+(data?data.id:'')+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button onclick="submitDevProject()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">'+(data?'수정':'생성')+'</button></div></div>');
+
   openModal('dev-modal');
   populateAssignees('dev-assignees-container',data?data.assignees:'');
   
+ 
   setTimeout(function(){
-    devQuillEditor = new Quill('#dev-quill-container', editorOptions);
-    if(data && data.note) devQuillEditor.root.innerHTML = data.note;
-  }, 100);
+  if(devMDE) { devMDE.toTextArea(); devMDE = null; }
+  devMDE = new EasyMDE({
+    element: document.getElementById('dev-md-editor'),
+    autofocus: false,
+    spellChecker: false,
+    placeholder: '마크다운으로 작성하세요...\n\n# 제목\n**굵게** *기울임*\n```코드블록```',
+    toolbar: [
+      'bold','italic','heading','|',
+      'quote','code','unordered-list','ordered-list','|',
+      'link','table','|',
+      'preview','side-by-side','fullscreen','|',
+      'guide'
+    ],
+    status: false,
+    minHeight: '200px'
+  });
+  if(data && data.note) {
+    // 기존 HTML 저장된 것이면 그대로, 마크다운이면 그대로 세팅
+    devMDE.value(data.note || '');
+  }
+}, 150);
+  
 }
 
 // 1-2. 프로젝트 생성/수정 시 기존 진행률 유지
@@ -928,7 +958,7 @@ function submitDevProject(){
     title:title, status:document.getElementById('dev-status').value, 
     assignees:getChecked('dev-assignees-container'), 
     deadline: document.getElementById('dev-deadline-main').value,
-    note: devQuillEditor.root.innerHTML,
+    note: devMDE ? devMDE.value() : '',
     tags:document.getElementById('dev-tags-input').value, priority:document.getElementById('dev-priority-select').value
   };
   
@@ -1698,7 +1728,8 @@ var editorOptions = {
   placeholder: '내용을 자세히 작성해주세요...'
 };
 var quillEditor = null;
-var devQuillEditor = null;
+var devQuillEditor = null; // 위키용 유지
+var devMDE = null;         // 개발 프로젝트 마크다운 에디터
 
 
 function renderWiki(){var el=document.getElementById('tab-wiki');if(!el.querySelector('#wiki-search-input')){el.innerHTML='<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-3"><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-book-read-fill text-gray-800 mr-2"></i> 사내 위키</h1><div class="flex items-center gap-3 flex-wrap"><input type="text" id="wiki-search-input" oninput="filterWikiUI()" placeholder="검색..." class="px-4 py-3 border r35 text-sm outline-none w-56 bg-white card-shadow"><button onclick="openWikiModal()" class="bg-gray-800 text-white px-6 py-3 r35 text-sm font-bold shadow-lg">+ 새 문서</button></div></div><div id="wiki-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>';}filterWikiUI();}
