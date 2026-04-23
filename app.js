@@ -2609,45 +2609,157 @@ function compressAndUploadImage(file, pathPrefix, callback) {
   };
 }
 
-/*═══════════════════════════════════════════════
-   제품 라인업 (Products) - 최종 통합 및 에디정리 완료
-  ═══════════════════════════════════════════════*/
-
 function renderProducts() {
   var el = document.getElementById('tab-products');
   if(!el) return;
-  if(!window.productViewMode) window.productViewMode = 'list'; 
+  if(!window.productViewMode) window.productViewMode = 'list';
+  if(!window.currentProductLocation) window.currentProductLocation = 'all';
+  if(!window.currentProductSort) window.currentProductSort = 'latest';
+
+  // 지역 목록 동적 추출
+  var locationSet = {};
+  CACHE.products.filter(function(p){ return !p.isDeleted && p.location; }).forEach(function(p){
+    p.location.split(',').forEach(function(l){ var t = l.trim(); if(t) locationSet[t] = true; });
+  });
+  var locationTabs = Object.keys(locationSet);
 
   el.innerHTML = `
-    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-3">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3">
       <div>
         <h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-box-3-fill text-gray-700 mr-2"></i> 제품 라인업</h1>
         <p class="text-xs text-gray-400 mt-1 ml-9 font-bold uppercase tracking-tight">Product & Asset Management</p>
       </div>
       <div class="flex items-center gap-3 flex-wrap">
         <div class="flex bg-gray-100 p-1 r24 border border-gray-200 shadow-inner">
-          <button onclick="window.productViewMode='list'; renderProducts();" class="px-5 py-2 r20 text-xs font-bold transition ${window.productViewMode==='list'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}"><i class="ri-list-check"></i> 전체 목록</button>
-          <button onclick="window.productViewMode='grid'; renderProducts();" class="px-5 py-2 r20 text-xs font-bold transition ${window.productViewMode==='grid'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}"><i class="ri-layout-grid-fill"></i> 갤러리</button>
+          <button onclick="window.productViewMode='list'; renderProducts();" class="px-5 py-2 r20 text-xs font-bold transition ${window.productViewMode==='list'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}">
+            <i class="ri-list-check"></i> 전체 목록
+          </button>
+          <button onclick="window.productViewMode='grid'; renderProducts();" class="px-5 py-2 r20 text-xs font-bold transition ${window.productViewMode==='grid'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}">
+            <i class="ri-layout-grid-fill"></i> 갤러리
+          </button>
         </div>
-        <input type="text" id="product-search" oninput="filterProducts()" placeholder="제품명 검색..." class="px-5 py-3 border r35 text-sm outline-none w-48 bg-white card-shadow focus:border-pink-300 transition">
+        <input type="text" id="product-search" oninput="filterProducts()" placeholder="제품명 검색..." 
+          class="px-5 py-3 border r35 text-sm outline-none w-48 bg-white card-shadow focus:border-pink-300 transition">
         ${canDelete() ? `
           <button onclick="openProductEditModal()" class="bg-gray-800 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-black transition">+ 제품 등록</button>
-          <button onclick="openCsvUploadModal()" class="bg-emerald-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-emerald-700 transition"><i class="ri-file-excel-2-fill"></i> CSV 일괄등록</button>
+          <button onclick="openCsvUploadModal()" class="bg-emerald-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-emerald-700 transition">
+            <i class="ri-file-excel-2-fill"></i> CSV 일괄등록
+          </button>
         ` : ''}
       </div>
     </div>
+
+    <!-- 지역 필터 + 정렬 바 -->
+    <div class="flex flex-col gap-4 mb-6 p-5 bg-white r35 border border-gray-100 shadow-sm">
+
+      <!-- 지역 필터 -->
+      <div>
+        <p class="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">📍 설치 지역</p>
+        <div class="flex gap-2 flex-wrap">
+          <button id="prod-loc-all" onclick="setProductLocation('all')"
+            class="prod-loc-tab px-4 py-2 r35 text-xs font-black border-2 transition border-gray-800 bg-gray-800 text-white">
+            전체
+          </button>
+          ${locationTabs.map(loc => `
+            <button id="prod-loc-${loc}" onclick="setProductLocation('${loc}')"
+              class="prod-loc-tab px-4 py-2 r35 text-xs font-black border-2 transition border-gray-200 bg-white text-gray-500 hover:border-gray-400">
+              ${loc}
+            </button>
+          `).join('')}
+          ${locationTabs.length === 0 ? '<p class="text-xs text-gray-300 font-bold self-center">제품 등록 시 지역을 입력하면 탭이 생겨요</p>' : ''}
+        </div>
+      </div>
+
+      <!-- 정렬 -->
+      <div>
+        <p class="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">↕ 정렬</p>
+        <div class="flex gap-2 flex-wrap">
+          ${[
+            {key:'latest',         label:'최신등록순'},
+            {key:'name',           label:'이름순'},
+            {key:'category',       label:'카테고리순'},
+            {key:'price_rent_asc', label:'렌탈가 낮은순'},
+            {key:'price_rent_desc',label:'렌탈가 높은순'},
+            {key:'price_buy_asc',  label:'구입가 낮은순'},
+          ].map(s => `
+            <button id="prod-sort-${s.key}" onclick="setProductSort('${s.key}')"
+              class="prod-sort-tab px-4 py-2 r35 text-xs font-black border-2 transition
+                ${window.currentProductSort === s.key
+                  ? 'border-pink-500 bg-pink-50 text-pink-600'
+                  : 'border-gray-200 bg-white text-gray-500 hover:border-pink-300'}">
+              ${s.label}
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+
     <div id="product-display-area" class="fade-in r35 shadow-sm border border-gray-100"></div>
   `;
+
   filterProducts();
 }
 
+// ─── 지역 필터 함수 ───
+function setProductLocation(loc) {
+  window.currentProductLocation = loc;
+  document.querySelectorAll('.prod-loc-tab').forEach(function(btn) {
+    var isActive = btn.id === 'prod-loc-' + loc;
+    btn.className = 'prod-loc-tab px-4 py-2 r35 text-xs font-black border-2 transition ' +
+      (isActive ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-400');
+  });
+  filterProducts();
+}
+
+// ─── 정렬 함수 ───
+function setProductSort(sort) {
+  window.currentProductSort = sort;
+  document.querySelectorAll('.prod-sort-tab').forEach(function(btn) {
+    var isActive = btn.id === 'prod-sort-' + sort;
+    btn.className = 'prod-sort-tab px-4 py-2 r35 text-xs font-black border-2 transition ' +
+      (isActive ? 'border-pink-500 bg-pink-50 text-pink-600' : 'border-gray-200 bg-white text-gray-500 hover:border-pink-300');
+  });
+  filterProducts();
+}
+
+// ─── 필터 + 정렬 + 렌더링 ───
 function filterProducts() {
   var q = (document.getElementById('product-search')||{value:''}).value.toLowerCase();
-  var data = CACHE.products.filter(p => !p.isDeleted && ((p.name||'').toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q)));
+  var loc = window.currentProductLocation || 'all';
+  var sort = window.currentProductSort || 'latest';
+
+  var data = CACHE.products.filter(function(p) {
+    if(p.isDeleted) return false;
+    var searchMatch = (p.name||'').toLowerCase().includes(q) || (p.code||'').toLowerCase().includes(q);
+    var locMatch = loc === 'all' ||
+      (p.location||'').split(',').map(function(l){ return l.trim(); }).includes(loc);
+    return searchMatch && locMatch;
+  });
+
+  // 정렬 적용
+  data = data.slice().sort(function(a, b) {
+    switch(sort) {
+      case 'name':
+        return (a.name||'').localeCompare(b.name||'', 'ko');
+      case 'category':
+        return (a.category||'').localeCompare(b.category||'', 'ko');
+      case 'price_rent_asc':
+        return (Number(a.price_rent)||0) - (Number(b.price_rent)||0);
+      case 'price_rent_desc':
+        return (Number(b.price_rent)||0) - (Number(a.price_rent)||0);
+      case 'price_buy_asc':
+        return (Number(a.price_buy)||0) - (Number(b.price_buy)||0);
+      case 'latest':
+      default:
+        return (b.timestamp||0) - (a.timestamp||0);
+    }
+  });
+
   var el = document.getElementById('product-display-area');
   if(!el) return;
 
-  if (window.productViewMode === 'list') {
+  // ── 리스트 뷰 ──
+  if(window.productViewMode === 'list') {
     el.className = "bg-white r35 border border-gray-100 shadow-sm overflow-x-auto";
     el.innerHTML = `
       <table class="w-full text-left text-xs whitespace-nowrap border-collapse">
@@ -2658,43 +2770,87 @@ function filterProducts() {
             <th class="p-5">용량</th>
             <th class="p-5">형태</th>
             <th class="p-5">카테고리</th>
+            <th class="p-5">설치 지역</th>
             <th class="p-5 text-right">원가</th>
             <th class="p-5 text-right">구입가</th>
             <th class="p-5 text-right text-pink-600">렌탈/세척가</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-50">
-          ${data.map(p => `
-            <tr onclick="openProductDetail('${p.id}')" class="hover:bg-pink-50/20 cursor-pointer transition">
-              <td class="p-4 pl-8 font-bold text-gray-700 flex items-center gap-4">
-                <div class="w-10 h-10 r10 overflow-hidden bg-gray-50 border border-gray-100 shrink-0">
-                  <img src="${p.imageUrl || 'https://i.imgur.com/7XvX8nD.png'}" class="w-full h-full object-cover" onerror="this.src='https://i.imgur.com/7XvX8nD.png'">
-                </div>
-                <div><p class="text-sm font-black text-gray-800">${esc(p.name)}</p><p class="text-[9px] text-gray-400 uppercase tracking-tighter">${esc(p.code)}</p></div>
-              </td>
-              <td class="p-4 text-gray-500 font-medium">${esc(p.subType || '-')}</td>
-              <td class="p-4 text-gray-500 font-medium">${esc(p.volume || '-')}</td>
-              <td class="p-4"><span class="bg-gray-100 text-gray-500 px-2.5 py-1 r8 font-bold text-[10px]">${esc(p.shape || 'PP')}</span></td>
-              <td class="p-4"><span class="bg-purple-50 text-purple-600 px-2.5 py-1 r8 font-black text-[10px]">${esc(p.category)}</span></td>
-              <td class="p-4 text-right font-bold text-gray-400">${p.price_origin ? Number(p.price_origin).toLocaleString() : '0'}</td>
-              <td class="p-4 text-right font-bold text-gray-800">${p.price_buy ? Number(p.price_buy).toLocaleString() : '0'}</td>
-              <td class="p-4 text-right font-black text-pink-600 bg-pink-50/30">${p.price_rent ? Number(p.price_rent).toLocaleString() : '0'}</td>
-            </tr>`).join('')}
+          ${data.length === 0
+            ? `<tr><td colspan="9" class="text-center py-16 text-gray-300 font-bold text-sm">해당하는 제품이 없습니다.</td></tr>`
+            : data.map(p => `
+              <tr onclick="openProductDetail('${p.id}')" class="hover:bg-pink-50/20 cursor-pointer transition">
+                <td class="p-4 pl-8">
+                  <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 r10 overflow-hidden bg-gray-50 border border-gray-100 shrink-0">
+                      <img src="${p.imageUrl || 'https://i.imgur.com/7XvX8nD.png'}" class="w-full h-full object-cover"
+                        onerror="this.src='https://i.imgur.com/7XvX8nD.png'">
+                    </div>
+                    <div>
+                      <p class="text-sm font-black text-gray-800">${esc(p.name)}</p>
+                      <p class="text-[9px] text-gray-400 uppercase tracking-tighter">${esc(p.code)}</p>
+                    </div>
+                  </div>
+                </td>
+                <td class="p-4 text-gray-500 font-medium">${esc(p.subType || '-')}</td>
+                <td class="p-4 text-gray-500 font-medium">${esc(p.volume || '-')}</td>
+                <td class="p-4">
+                  <span class="bg-gray-100 text-gray-500 px-2.5 py-1 r8 font-bold text-[10px]">${esc(p.shape || 'PP')}</span>
+                </td>
+                <td class="p-4">
+                  <span class="bg-purple-50 text-purple-600 px-2.5 py-1 r8 font-black text-[10px]">${esc(p.category)}</span>
+                </td>
+                <td class="p-4">
+                  <div class="flex gap-1 flex-wrap">
+                    ${(p.location||'').split(',').filter(Boolean).map(l =>
+                      `<span class="bg-blue-50 text-blue-600 px-2 py-0.5 r8 font-bold text-[10px]">${l.trim()}</span>`
+                    ).join('') || '<span class="text-gray-300 text-[10px]">-</span>'}
+                  </div>
+                </td>
+                <td class="p-4 text-right font-bold text-gray-400">
+                  ${p.price_origin ? Number(p.price_origin).toLocaleString() : '-'}
+                </td>
+                <td class="p-4 text-right font-bold text-gray-800">
+                  ${p.price_buy ? Number(p.price_buy).toLocaleString() : '-'}
+                </td>
+                <td class="p-4 text-right font-black text-pink-600 bg-pink-50/30">
+                  ${p.price_rent ? Number(p.price_rent).toLocaleString() : '-'}
+                </td>
+              </tr>`).join('')}
         </tbody>
       </table>`;
+
+  // ── 갤러리 뷰 ──
   } else {
     el.className = "grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6 p-4";
-    el.innerHTML = data.map(p => `
-      <div onclick="openProductDetail('${p.id}')" class="bg-white r35 card-shadow overflow-hidden cursor-pointer hover:-translate-y-1 transition duration-300 border border-gray-100 group relative">
-        <div class="aspect-square bg-gray-50 flex items-center justify-center relative overflow-hidden">
-          ${p.imageUrl ? `<img src="${p.imageUrl}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">` : `<i class="ri-box-3-line text-4xl text-gray-200"></i>`}
-          <div class="absolute top-4 left-4 bg-white/90 backdrop-blur px-3 py-1 r10 text-[10px] font-black text-gray-600 shadow-sm border border-gray-100">${p.category}</div>
-        </div>
-        <div class="p-5 text-center">
-          <p class="text-[10px] font-bold text-pink-500 mb-1 uppercase tracking-widest">${p.code}</p>
-          <h3 class="font-black text-gray-800 truncate text-sm">${p.name}</h3>
-        </div>
-      </div>`).join('');
+    el.innerHTML = data.length === 0
+      ? '<p class="col-span-5 text-center py-16 text-gray-300 font-bold text-sm">해당하는 제품이 없습니다.</p>'
+      : data.map(p => `
+          <div onclick="openProductDetail('${p.id}')"
+            class="bg-white r35 card-shadow overflow-hidden cursor-pointer hover:-translate-y-1 transition duration-300 border border-gray-100 group relative">
+            <div class="aspect-square bg-gray-50 flex items-center justify-center relative overflow-hidden">
+              ${p.imageUrl
+                ? `<img src="${p.imageUrl}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500">`
+                : `<i class="ri-box-3-line text-4xl text-gray-200"></i>`}
+              <!-- 카테고리 뱃지 -->
+              <div class="absolute top-3 left-3 bg-white/90 backdrop-blur px-2.5 py-1 r10 text-[10px] font-black text-gray-600 shadow-sm border border-gray-100">
+                ${p.category}
+              </div>
+              <!-- 지역 뱃지 -->
+              ${p.location ? `
+                <div class="absolute bottom-3 left-2 right-2 flex gap-1 flex-wrap justify-center">
+                  ${p.location.split(',').filter(Boolean).slice(0,2).map(l =>
+                    `<span class="bg-blue-500/80 text-white text-[8px] font-black px-2 py-0.5 r10 backdrop-blur">${l.trim()}</span>`
+                  ).join('')}
+                </div>` : ''}
+            </div>
+            <div class="p-4 text-center">
+              <p class="text-[10px] font-bold text-pink-500 mb-1 uppercase tracking-widest">${p.code}</p>
+              <h3 class="font-black text-gray-800 truncate text-sm mb-1">${p.name}</h3>
+              ${p.price_rent ? `<p class="text-xs font-black text-emerald-600">${Number(p.price_rent).toLocaleString()}원</p>` : ''}
+            </div>
+          </div>`).join('');
   }
 }
 
@@ -2729,7 +2885,9 @@ async function submitNewProduct(id) {
     price_origin: Number(document.getElementById('p-p1').value) || 0,
     price_buy: Number(document.getElementById('p-p2').value) || 0,
     price_rent: Number(document.getElementById('p-p3').value) || 0,
-    description: document.getElementById('p-desc').value, updatedAt: Date.now()
+    description: document.getElementById('p-desc').value,
+    location: document.getElementById('p-location') ? document.getElementById('p-location').value : '',
+    updatedAt: Date.now()
   };
   if(!obj.name || !obj.code) return showToast("⚠️ 제품명과 코드는 필수입니다.");
   if(btn) { btn.disabled = true; btn.innerText = "⏳ 저장 중..."; }
@@ -2767,7 +2925,9 @@ function openProductEditModal(id) {
           <div class="grid grid-cols-2 gap-3">
             <div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">재질</label><input type="text" id="p-shape" value="${p?esc(p.shape):'PP'}" class="w-full border p-3 r20 text-sm bg-gray-50"></div>
             <div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">카테고리</label><select id="p-cat" class="w-full border p-3 r20 text-sm bg-gray-50 font-bold"><option ${p&&p.category==='다회용기'?'selected':''}>다회용기</option><option ${p&&p.category==='다회용컵'?'selected':''}>다회용컵</option><option ${p&&p.category==='키오스크'?'selected':''}>키오스크</option><option ${p&&p.category==='기타'?'selected':''}>기타</option></select></div>
-          </div>
+          </div>// 추가할 내용
+          <div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">📍 설치 지역 (쉼표 구분)</label>
+          <input type="text" id="p-location" value="${p?esc(p.location||''):''}" placeholder="예: 서울, 부산, 제주" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none focus:border-blue-400"></div>
         </div>
         <div class="space-y-4">
           <label class="block w-full aspect-video bg-gray-100 r24 flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-200 overflow-hidden relative group">
