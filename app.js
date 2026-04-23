@@ -2927,7 +2927,7 @@ function openProductEditModal(id) {
             <div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">카테고리</label><select id="p-cat" class="w-full border p-3 r20 text-sm bg-gray-50 font-bold"><option ${p&&p.category==='다회용기'?'selected':''}>다회용기</option><option ${p&&p.category==='다회용컵'?'selected':''}>다회용컵</option><option ${p&&p.category==='키오스크'?'selected':''}>키오스크</option><option ${p&&p.category==='기타'?'selected':''}>기타</option></select></div>
           </div>// 추가할 내용
           <div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">📍 구분(쉼표 구분)</label>
-          <input type="text" id="p-location" value="${p?esc(p.location||''):''}" placeholder="예: 서울, 부산, 제주" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none focus:border-blue-400"></div>
+          <input type="text" id="p-location" value="${p?esc(p.location||''):''}" placeholder="예: 경기장(서울), 지자체명, 기관명 등" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none focus:border-blue-400"></div>
         </div>
         <div class="space-y-4">
           <label class="block w-full aspect-video bg-gray-100 r24 flex flex-col items-center justify-center cursor-pointer border-2 border-dashed border-gray-200 overflow-hidden relative group">
