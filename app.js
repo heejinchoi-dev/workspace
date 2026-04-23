@@ -2636,7 +2636,7 @@ function renderProducts() {
         ` : ''}
       </div>
     </div>
-    <div id="product-display-area" class="fade-in overflow-hidden r35 shadow-sm border border-gray-100"></div>
+    <div id="product-display-area" class="fade-in r35 shadow-sm border border-gray-100"></div>
   `;
   filterProducts();
 }
@@ -2648,7 +2648,7 @@ function filterProducts() {
   if(!el) return;
 
   if (window.productViewMode === 'list') {
-    el.className = "bg-white r35 overflow-hidden border border-gray-100 shadow-sm overflow-x-auto";
+    el.className = "bg-white r35 border border-gray-100 shadow-sm overflow-x-auto";
     el.innerHTML = `
       <table class="w-full text-left text-xs whitespace-nowrap border-collapse">
         <thead class="bg-gray-50/80 border-b border-gray-100 text-gray-400 font-bold uppercase tracking-wider">
