@@ -2926,7 +2926,7 @@ function openProductEditModal(id) {
             <div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">재질</label><input type="text" id="p-shape" value="${p?esc(p.shape):'PP'}" class="w-full border p-3 r20 text-sm bg-gray-50"></div>
             <div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">카테고리</label><select id="p-cat" class="w-full border p-3 r20 text-sm bg-gray-50 font-bold"><option ${p&&p.category==='다회용기'?'selected':''}>다회용기</option><option ${p&&p.category==='다회용컵'?'selected':''}>다회용컵</option><option ${p&&p.category==='키오스크'?'selected':''}>키오스크</option><option ${p&&p.category==='기타'?'selected':''}>기타</option></select></div>
           </div>// 추가할 내용
-          <div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">📍 설치 지역 (쉼표 구분)</label>
+          <div><label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">📍 구분(쉼표 구분)</label>
           <input type="text" id="p-location" value="${p?esc(p.location||''):''}" placeholder="예: 서울, 부산, 제주" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none focus:border-blue-400"></div>
         </div>
         <div class="space-y-4">
