@@ -2654,7 +2654,7 @@ function renderProducts() {
 
       <!-- 지역 필터 -->
       <div>
-        <p class="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">📍 설치 지역</p>
+        <p class="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-2">📍 구분</p>
         <div class="flex gap-2 flex-wrap">
           <button id="prod-loc-all" onclick="setProductLocation('all')"
             class="prod-loc-tab px-4 py-2 r35 text-xs font-black border-2 transition border-gray-800 bg-gray-800 text-white">
@@ -2770,7 +2770,7 @@ function filterProducts() {
             <th class="p-5">용량</th>
             <th class="p-5">형태</th>
             <th class="p-5">카테고리</th>
-            <th class="p-5">설치 지역</th>
+            <th class="p-5">구분</th>
             <th class="p-5 text-right">원가</th>
             <th class="p-5 text-right">구입가</th>
             <th class="p-5 text-right text-pink-600">렌탈/세척가</th>
