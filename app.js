@@ -459,6 +459,29 @@ function submitQuickLink(){
 // ═══════════════════════════════════════════════
 var calendar = null;
 
+function clearDoneTodos() {
+  var doneTasks = CACHE.tasks.filter(function(t) {
+    return t.taskType === 'personal'
+      && t.status === 'Done'
+      && (t.creator || '').toLowerCase() === USER.email.toLowerCase();
+  });
+
+  if(!doneTasks.length) return showToast("삭제할 완료 항목이 없어요.");
+
+  openCustomConfirm(
+    "완료 항목 일괄 삭제",
+    "체크된 항목 " + doneTasks.length + "개를 모두 삭제할까요?",
+    function() {
+      doneTasks.forEach(function(t) {
+        CACHE.tasks = CACHE.tasks.filter(function(x) { return x.id !== t.id; });
+        FB.patch('tasks/' + t.id, { isDeleted: true, deletedAt: nowFmt(), deletedBy: USER.name });
+      });
+      renderMyTodo();
+      showToast("✅ " + doneTasks.length + "개 삭제 완료!");
+    }
+  );
+}
+
 // 1. 달력/업무 탭의 전체 틀을 잡는 함수
 function renderCalendar() {
   var el = document.getElementById('tab-calendar');
@@ -476,6 +499,7 @@ function renderCalendar() {
           <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm pointer-events-none"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
           <div class="flex gap-2 items-center">
             <button onclick="extractWeeklyReport()" class="bg-gray-800 text-white text-[10px] px-3 py-1 r20 hover:bg-black transition">주간보고 추출</button>
+            <button onclick="clearDoneTodos()" class="bg-red-100 text-red-500 text-[10px] px-3 py-1 r20 hover:bg-red-200 transition">완료 항목 삭제</button>
             <i class="ri-drag-move-fill text-gray-300 text-lg"></i>
           </div>
         </div>
@@ -1439,15 +1463,101 @@ function copyApprovalData(id) {
 }
 
 function openApprovalModal(){
-  var myLeader=getTeamLeader(USER.dept);
-  var admins=CACHE.members.filter(function(m){return isApprover(m);});
-  var opts=admins.map(function(x){var pos=getMemberPosition(x);return'<option value="'+x.email+'" '+(x.email===myLeader?'selected':'')+'>'+x.name+' ('+x.dept+' · '+pos+')</option>';}).join('');
-  renderModalRoot('approval-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in flex flex-col"><h2 class="text-xl md:text-2xl font-black mb-6 border-b pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 text-gray-800"><span><i class="ri-bank-card-fill text-blue-500 mr-2"></i> 지출결의서 작성</span><button onclick="addApprItemRow()" class="bg-gray-900 text-white px-5 py-2.5 r35 text-sm font-bold">+ 항목 추가</button></h2><div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-gray-50 p-5 r35 border border-gray-100"><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">1차 결재권자</label><select id="appr-approver1" class="w-full border p-3 r24 text-sm font-bold text-blue-700 bg-white outline-none">'+opts+'</select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">2차 결재권자</label><select id="appr-approver2" class="w-full border p-3 r24 text-sm font-bold text-blue-700 bg-white outline-none"><option value="">지정안함</option>'+opts+'</select></div><div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2 flex items-center justify-between"><span>입금 요청일 *</span><label class="flex items-center gap-1.5 cursor-pointer text-red-500"><input type="checkbox" id="appr-is-urgent" onchange="toggleApprUrgent()" class="w-4 h-4 accent-red-500"> <span class="text-xs font-bold">긴급</span></label></label><input id="appr-date" type="date" disabled class="w-full border p-3 r24 text-sm font-bold bg-gray-100 outline-none cursor-not-allowed text-gray-500"><div id="appr-urgent-warning" class="hidden mt-2 bg-red-50 border border-red-200 text-red-600 text-xs font-bold p-3 r20 flex items-start gap-2"><i class="ri-error-warning-fill text-base shrink-0"></i><span>긴급 지출은 결재권자의 일정에 따라 <b>반려될 수 있습니다.</b> 반드시 사전에 결재권자와 협의 후 신청해 주세요.</span></div></div></div><div id="appr-items-container" class="space-y-4 flex-1 overflow-y-auto pr-2 min-h-[200px] hide-scrollbar"></div><div class="flex justify-end gap-3 mt-6 pt-4 border-t"><button onclick="closeModal(\'approval-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button id="btn-submit-appr" onclick="submitApprovalBulk()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">결재 올리기</button></div></div>');
-  openModal('approval-modal');addApprItemRow();
+  var myLeader = getTeamLeader(USER.dept);
+
+  // 전체 멤버 옵션 (자유 선택)
+  var allOpts = CACHE.members.map(function(x){
+    var pos = getMemberPosition(x);
+    return '<option value="'+x.email+'" '+(x.email===myLeader?'selected':'')+'>'+x.name+' ('+x.dept+' · '+pos+')</option>';
+  }).join('');
+
+  // 강제 지정 고정 결재권자 (ADMIN 또는 센터장만)
+  var forcedApprovers = CACHE.members.filter(function(m){
+    return m.role === 'ADMIN' || m.role === '센터장';
+  });
+
+  var forcedHtml = forcedApprovers.length > 0
+    ? '<div class="mb-6 bg-amber-50 border border-amber-200 p-4 r24"><p class="text-[10px] font-black text-amber-600 uppercase tracking-wider mb-3">⚡ 필수 결재자 (자동 포함)</p><div class="flex flex-wrap gap-2">'
+      + forcedApprovers.map(function(m){
+          return '<div class="flex items-center gap-2 bg-white px-3 py-2 r20 border border-amber-200 shadow-sm">'
+            + '<div class="w-6 h-6 rounded-full bg-amber-500 text-white text-[10px] flex items-center justify-center font-black">'+m.name[0]+'</div>'
+            + '<span class="text-xs font-bold text-gray-700">'+m.name+'</span>'
+            + '<span class="text-[9px] text-amber-600 font-bold">'+getMemberPosition(m)+'</span>'
+            + '</div>';
+        }).join('')
+      + '</div></div>'
+    : '';
+
+  renderModalRoot('approval-modal',
+    '<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in flex flex-col">'
+    + '<h2 class="text-xl md:text-2xl font-black mb-6 border-b pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 text-gray-800">'
+    + '<span><i class="ri-bank-card-fill text-blue-500 mr-2"></i> 지출결의서 작성</span>'
+    + '<button onclick="addApprItemRow()" class="bg-gray-900 text-white px-5 py-2.5 r35 text-sm font-bold">+ 항목 추가</button>'
+    + '</h2>'
+
+    // 필수 결재자 표시
+    + forcedHtml
+
+    // 결재권자 선택
+    + '<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 bg-gray-50 p-5 r35 border border-gray-100">'
+
+    // 1차 결재권자 — 전체 멤버에서 자유 선택, 기본값 팀장
+    + '<div>'
+    + '<label class="block text-xs font-bold text-gray-500 mb-2 pl-2">1차 결재권자 <span class="text-red-500">*</span></label>'
+    + '<select id="appr-approver1" class="w-full border p-3 r24 text-sm font-bold text-blue-700 bg-white outline-none">'
+    + allOpts
+    + '</select>'
+    + '</div>'
+
+    // 2차 결재권자 — 전체 멤버에서 자유 선택, 선택 안 함 포함
+    + '<div>'
+    + '<label class="block text-xs font-bold text-gray-500 mb-2 pl-2">2차 결재권자</label>'
+    + '<select id="appr-approver2" class="w-full border p-3 r24 text-sm font-bold text-blue-700 bg-white outline-none">'
+    + '<option value="">지정 안 함</option>'
+    + allOpts
+    + '</select>'
+    + '</div>'
+
+    // 입금 요청일 + 긴급
+    + '<div>'
+    + '<label class="block text-xs font-bold text-gray-500 mb-2 pl-2 flex items-center justify-between">'
+    + '<span>입금 요청일 <span class="text-red-500">*</span></span>'
+    + '<label class="flex items-center gap-1.5 cursor-pointer text-red-500">'
+    + '<input type="checkbox" id="appr-is-urgent" onchange="toggleApprUrgent()" class="w-4 h-4 accent-red-500">'
+    + '<span class="text-xs font-bold">긴급</span>'
+    + '</label>'
+    + '</label>'
+    + '<input id="appr-date" type="date" disabled class="w-full border p-3 r24 text-sm font-bold bg-gray-100 outline-none cursor-not-allowed text-gray-500">'
+    + '<div id="appr-urgent-warning" class="hidden mt-2 bg-red-50 border border-red-200 text-red-600 text-xs font-bold p-3 r20 flex items-start gap-2">'
+    + '<i class="ri-error-warning-fill text-base shrink-0"></i>'
+    + '<span>긴급 지출은 결재권자 일정에 따라 <b>반려될 수 있습니다.</b> 반드시 사전 협의 후 신청하세요.</span>'
+    + '</div>'
+    + '</div>'
+    + '</div>'
+
+    // 항목 컨테이너
+    + '<div id="appr-items-container" class="space-y-4 flex-1 overflow-y-auto pr-2 min-h-[200px] hide-scrollbar"></div>'
+
+    // 하단 버튼
+    + '<div class="flex justify-end gap-3 mt-6 pt-4 border-t">'
+    + '<button onclick="closeModal(\'approval-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button>'
+    + '<button id="btn-submit-appr" onclick="submitApprovalBulk()" class="px-8 py-3.5 bg-blue-600 text-white r35 text-sm font-bold shadow-lg">결재 올리기</button>'
+    + '</div>'
+    + '</div>'
+  );
+
+  openModal('approval-modal');
+  addApprItemRow();
+
   // 기본 입금일 = 익월 10일
-  var d2=new Date();var y2=d2.getFullYear(),mo=d2.getMonth()+2;if(mo>12){mo=1;y2++;}
-  var dateEl=document.getElementById('appr-date');if(dateEl)dateEl.value=y2+'-'+pad(mo)+'-10';
+  var d2 = new Date();
+  var y2 = d2.getFullYear(), mo = d2.getMonth() + 2;
+  if(mo > 12){ mo = 1; y2++; }
+  var dateEl = document.getElementById('appr-date');
+  if(dateEl) dateEl.value = y2 + '-' + pad(mo) + '-10';
 }
+
+
 function toggleApprUrgent(){
   var isUrgent=document.getElementById('appr-is-urgent').checked;
   var dateEl=document.getElementById('appr-date');
