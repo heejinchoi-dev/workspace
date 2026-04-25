@@ -969,7 +969,11 @@ function openDevDetail(id){
               <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">${d.ticketId||''}</span>
               ${pm ? `<span class="text-[10px] px-2 py-0.5 r20 font-black flex items-center gap-1 ${pm.bg} ${pm.text}"><i class="${pm.icon}"></i>${d.priority}</span>` : ''}
             </div>
-            <h1 class="text-2xl font-black text-gray-900 leading-tight">${esc(d.title)}</h1>
+            <h1 contenteditable="true" 
+    onblur="inlineSaveDevTitle('${d.id}', this)"
+    onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+    class="text-2xl font-black text-gray-900 leading-tight outline-none border-b-2 border-transparent focus:border-indigo-300 pb-1 transition cursor-text"
+    title="클릭하여 제목 수정">${esc(d.title)}</h1>
           </div>
           <div class="flex items-center gap-2 shrink-0">
             <button onclick="closeModal('dev-detail-modal');openDevModal(CACHE.devProjects.find(x=>x.id==='${d.id}'))"
@@ -1032,12 +1036,30 @@ function openDevDetail(id){
             </div>
           </div>
 
-          <!-- 상세 설명 -->
+          <!-- 상세 설명 (인라인 편집) -->
           <div class="mb-6">
-            <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <i class="ri-file-text-line text-indigo-400"></i> 상세 설명
-            </h3>
-            <div class="prose prose-sm max-w-none bg-gray-50/50 p-5 r16 border border-gray-100">${noteHtml}</div>
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <i class="ri-file-text-line text-indigo-400"></i> 상세 설명
+              </h3>
+              <button id="dev-desc-edit-btn" onclick="toggleDevDescEdit('${d.id}')"
+                class="text-xs text-indigo-500 hover:text-indigo-700 font-bold flex items-center gap-1 px-3 py-1 r20 hover:bg-indigo-50 transition">
+                <i class="ri-edit-line"></i> 수정
+              </button>
+            </div>
+            <!-- 뷰 모드 -->
+            <div id="dev-desc-view" onclick="toggleDevDescEdit('${d.id}')"
+              class="prose prose-sm max-w-none bg-gray-50/50 p-5 r16 border border-gray-100 min-h-[60px] cursor-text hover:border-indigo-200 transition">
+              ${noteHtml}
+            </div>
+            <!-- 편집 모드 -->
+            <div id="dev-desc-editor-wrap" class="hidden">
+              <textarea id="dev-inline-md-editor"></textarea>
+              <div class="flex justify-end gap-2 mt-2">
+                <button onclick="cancelDevDescEdit()" class="px-4 py-2 bg-gray-100 r20 text-xs font-bold hover:bg-gray-200">취소</button>
+                <button onclick="saveDevDesc('${d.id}')" class="px-4 py-2 bg-indigo-600 text-white r20 text-xs font-bold hover:bg-indigo-700 shadow-sm">저장</button>
+              </div>
+            </div>
           </div>
 
           <!-- 첨부 이미지 -->
@@ -2716,6 +2738,14 @@ function setupRealtimeListeners() {
     }
   });
 
+// 탭 권한 실시간 동기화 (F5 후에도 유지)
+  db.ref('tabPermissions').on('value', function(snap) {
+    if(snap.val()) {
+      CACHE.tabPermissions = snap.val();
+      if(typeof applyTabPermissions === 'function') applyTabPermissions();
+    }
+  });
+
   setTimeout(function(){ isInitialLoad = false; }, 3000);
 }
 
@@ -3719,6 +3749,91 @@ function saveTabPermission(tab) {
   // 사이드바 즉시 반영
   applyTabPermissions();
   showToast('✅ 권한이 저장되었습니다.');
+}
+
+/*═══════════ 개발 프로젝트 인라인 편집 ═══════════*/
+function inlineSaveDevTitle(id, el) {
+  var newTitle = el.innerText.trim();
+  var d = CACHE.devProjects.find(function(x){ return x.id === id; });
+  if(!newTitle) { if(d) el.innerText = d.title; return; }
+  if(d && d.title !== newTitle) {
+    d.title = newTitle;
+    FB.patch('devProjects/'+id, { title: newTitle });
+    renderDevCardList(CACHE.devProjects.filter(function(p){ return p.status === devView; }));
+    showToast('✅ 제목 저장됨');
+  }
+}
+
+var devInlineMDE = null;
+
+function toggleDevDescEdit(id) {
+  var viewEl  = document.getElementById('dev-desc-view');
+  var wrapEl  = document.getElementById('dev-desc-editor-wrap');
+  var btn     = document.getElementById('dev-desc-edit-btn');
+  if(!viewEl || !wrapEl) return;
+
+  var isEditing = !wrapEl.classList.contains('hidden');
+  if(isEditing) { cancelDevDescEdit(); return; }
+
+  var d = CACHE.devProjects.find(function(x){ return x.id === id; });
+  if(!d) return;
+
+  viewEl.classList.add('hidden');
+  wrapEl.classList.remove('hidden');
+  if(btn) btn.innerHTML = '<i class="ri-close-line"></i> 취소';
+
+  setTimeout(function() {
+    if(devInlineMDE) { try{ devInlineMDE.toTextArea(); }catch(e){} devInlineMDE = null; }
+    devInlineMDE = new EasyMDE({
+      element: document.getElementById('dev-inline-md-editor'),
+      autofocus: true,
+      spellChecker: false,
+      placeholder: '내용을 작성하세요...\n\n코드 블록:\n```bash\n명령어\n```\n\n```javascript\nconst x = 1;\n```',
+      toolbar: [
+        'bold','italic','heading','|',
+        'code','quote','|',
+        'unordered-list','ordered-list','|',
+        'link','table','|',
+        'preview','side-by-side','|','guide'
+      ],
+      status: false,
+      minHeight: '220px'
+    });
+    devInlineMDE.value(d.note || '');
+  }, 100);
+}
+
+function cancelDevDescEdit() {
+  var viewEl = document.getElementById('dev-desc-view');
+  var wrapEl = document.getElementById('dev-desc-editor-wrap');
+  var btn    = document.getElementById('dev-desc-edit-btn');
+  if(viewEl) viewEl.classList.remove('hidden');
+  if(wrapEl) wrapEl.classList.add('hidden');
+  if(btn)    btn.innerHTML = '<i class="ri-edit-line"></i> 수정';
+  if(devInlineMDE) { try{ devInlineMDE.toTextArea(); }catch(e){} devInlineMDE = null; }
+}
+
+function saveDevDesc(id) {
+  if(!devInlineMDE) return;
+  var newNote = devInlineMDE.value();
+  var d = CACHE.devProjects.find(function(x){ return x.id === id; });
+  if(d) {
+    d.note = newNote;
+    FB.patch('devProjects/'+id, { note: newNote });
+  }
+  // 뷰 갱신
+  var viewEl = document.getElementById('dev-desc-view');
+  if(viewEl) {
+    if(!newNote || !newNote.trim()) {
+      viewEl.innerHTML = '<p class="text-gray-400 text-sm italic">내용 없음 — 클릭하여 작성하세요.</p>';
+    } else if(newNote.startsWith('<')) {
+      viewEl.innerHTML = newNote;
+    } else {
+      viewEl.innerHTML = marked.parse(newNote);
+    }
+  }
+  cancelDevDescEdit();
+  showToast('✅ 저장되었습니다.');
 }
 
 /*═══════════ 고정 지출 관리 ═══════════*/
