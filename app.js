@@ -5,7 +5,7 @@ firebase.initializeApp(firebaseConfig);var auth=firebase.auth(),db=firebase.data
 /*═══════════ Global ═══════════*/
 // 기존 코드: var USER=null,CACHE={tasks:[], ... ,wiki:[],leaveInfo:{total:15,used:0,remain:15}};
 // 아래처럼 변경 (products:[] 추가)
-var USER=null,CACHE={tasks:[],devProjects:[],sprints:[],crm:[],cs:[],schedules:[],approval:[],leaves:[],vault:[],comments:{},members:[],wiki:[],products:[],leaveInfo:{total:15,used:0,remain:15}};
+var USER=null,CACHE={tasks:[],devProjects:[],sprints:[],crm:[],cs:[],schedules:[],approval:[],leaves:[],vault:[],comments:{},members:[],wiki:[],products:[],fixedExpenses:[],leaveInfo:{total:15,used:0,remain:15}};
 var devView='board',confirmCb=null,chartCRM=null,chartTasks=null,activeNoticeId=null;
 var teamTaskViewMode = 'list';
 var isInitialLoad = true;
@@ -190,7 +190,7 @@ function processData(results){
   CACHE.approval=parseNode(results.approvals).filter(function(a){return !a.isDeleted;});
   CACHE.leaves=parseNode(results.leaves).filter(function(l){return !l.isDeleted;});
   CACHE.wiki=parseNode(results.wiki).filter(function(w){return !w.isDeleted;});
-  CACHE.products=parseNode(results.products).filter(function(p){return !p.isDeleted;});
+  CACHE.fixedExpenses=parseNode(results.fixedExpenses).filter(function(f){return !f.isDeleted;});
   CACHE.quickLinks = parseNode(results.quickLinks); 
   CACHE.comments=results.comments||{};
   
@@ -236,6 +236,7 @@ function showTab(name){
   var renders={
     home:renderDashboard,
     calendar:renderCalendar,
+    accounting:renderAccounting,
     teamcal:renderTeamCalendar, // 전사 캘린더
     products:renderProducts,
     dev:function(){setDevView(devView);},
@@ -569,7 +570,17 @@ function renderTeamProjectBoard() {
     btnBoard.className = `px-3 py-1 r20 text-xs font-bold ${teamTaskViewMode==='board'?'bg-white text-gray-800 shadow-sm':'text-gray-400'}`;
   }
 
-  var teamTasks = CACHE.tasks.filter(t => t.taskType === 'team');
+  var teamTasks = CACHE.tasks.filter(function(t) {
+  if(t.taskType !== 'team') return false;
+  if(!t.visibility || t.visibility === 'all') return true;
+  // 그룹 지정 업무: 담당자 또는 그룹 멤버이거나 ADMIN이면 표시
+  var isAssignee = (t.assignees||'').toLowerCase().indexOf(USER.email) > -1;
+  var isGroupMember = (t.groupMembers||'').toLowerCase().indexOf(USER.email) > -1;
+  var isAdmin = USER.role === 'ADMIN';
+  var isCreator = (t.creator||'').toLowerCase() === USER.email.toLowerCase();
+  return isAssignee || isGroupMember || isAdmin || isCreator;
+  });
+
   if(teamTasks.length === 0) {
     el.innerHTML = '<div class="text-center py-20 text-gray-300 font-bold">등록된 팀별 업무가 없습니다.</div>';
     return;
@@ -602,10 +613,22 @@ function renderTeamProjectBoard() {
             <i class="ri-arrow-down-s-line text-gray-400 text-xl group-open:rotate-180 transition-transform"></i>
           </summary>
           <div class="px-6 pb-6 pt-2 space-y-3">
-            ${tasks.map(t => `
+              ${tasks.map(t => `
               <div onclick="openTaskDetail('${t.id}')" class="bg-white p-5 r24 border border-gray-200 hover:border-blue-400 cursor-pointer transition group shadow-sm">
-                <div class="flex justify-between items-start gap-4"><p class="text-sm font-bold text-gray-800 flex-1">${esc(t.title)}</p>${statusBadge(t.status === 'Done' ? '완료' : '진행중')}</div>
-                <div class="flex justify-between items-center mt-4"><div class="flex items-center gap-2"><span class="text-[10px] text-gray-500 font-bold">${getMemberName(t.creator)}</span></div><div class="text-[10px] text-gray-400"><i class="ri-chat-3-line"></i> ${Object.values(CACHE.comments).filter(c => c.targetId === t.id).length}</div></div>
+                <div class="flex justify-between items-start gap-4">
+                  <p class="text-sm font-bold text-gray-800 flex-1">
+                    ${t.visibility==='group' ? '<i class="ri-lock-fill text-indigo-400 mr-1 text-xs"></i>' : ''}${esc(t.title)}
+                  </p>
+                  ${statusBadge(t.status === 'Done' ? '완료' : '진행중')}
+                </div>
+                <div class="flex justify-between items-center mt-4">
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-gray-500 font-bold">${getMemberName(t.creator)}</span>
+                  </div>
+                  <div class="text-[10px] text-gray-400">
+                    <i class="ri-chat-3-line"></i> ${Object.values(CACHE.comments).filter(c => c.targetId === t.id).length}
+                  </div>
+                </div>
               </div>`).join('')}
           </div>
         </details>`;
@@ -641,47 +664,7 @@ function saveFolderState(projectName, isOpen) {
   localStorage.setItem('teamFolderStates', JSON.stringify(folderStates));
 }
 
-// 하위 업무 추가 함수
-function addSubTask(taskId) {
-  var inp = document.getElementById('new-subtask-in');
-  if(!inp.value.trim()) return;
-  var t = CACHE.tasks.find(x => x.id === taskId);
-  t.checklist.push({ text: inp.value.trim(), done: false, addedBy: USER.email });
-  FB.patch('tasks/' + taskId, { checklist: t.checklist });
-  inp.value = ''; openTaskDetail(taskId);
-}
 
-// 하위 업무 토글 함수
-function toggleSubTask(taskId, idx, done) {
-  var t = CACHE.tasks.find(x => x.id === taskId);
-  t.checklist[idx].done = done;
-  t.checklist[idx].completedBy = done ? USER.email : null;
-  FB.patch('tasks/' + taskId, { checklist: t.checklist });
-  setTimeout(() => openTaskDetail(taskId), 300);
-}
-
-function confirmDeleteTask(id){
-  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
-  openCustomConfirm("업무 삭제","이 업무를 삭제하시겠습니까?",function(){
-    CACHE.tasks=CACHE.tasks.filter(function(x){return x.id!==id;});
-    FB.patch('tasks/'+id, { isDeleted: true, deletedAt: nowFmt(), deletedBy: USER.name });
-    closeModal('task-detail-modal');
-    renderMyTodo();
-    renderTeamProjectBoard();
-    showToast("삭제 완료");
-  });
-}
-
-function submitTaskComment(id) {
-  var inp = document.getElementById('task-cmt-in');
-  if(!inp || !inp.value.trim()) return;
-  var cId = genId();
-  var c = {targetId: id, email: USER.email, authorName: USER.name, content: inp.value, date: nowFmt()};
-  CACHE.comments[cId] = c;
-  FB.set('comments/' + cId, c);
-  openTaskDetail(id); // 화면 갱신
-  showToast("의견이 등록되었습니다.");
-}
 
 function renderTaskChecklist(taskId){
   var t=CACHE.tasks.find(function(x){return x.id===taskId;});if(!t)return;
@@ -720,35 +703,6 @@ function toggleTaskChecklist(taskId,i,done){
   FB.patch('tasks/'+taskId,{checklist:t.checklist});
 }
 
-function openTeamTaskModal(){
-  // 기존 프로젝트명 추출
-  var existingProjects={};CACHE.tasks.filter(function(t){return t.taskType==='team'&&t.project;}).forEach(function(t){existingProjects[t.project]=true;});
-  // devProjects에서도 가져오기
-  CACHE.devProjects.forEach(function(p){existingProjects[p.title]=true;});
-  var projOpts=Object.keys(existingProjects).map(function(p){return'<option value="'+esc(p)+'">'+esc(p)+'</option>';}).join('');
-
-  renderModalRoot('team-task-modal',
-    '<div class="bg-white r35 modal-content max-w-md p-8 md:p-10 shadow-2xl fade-in">'+
-    '<h2 class="text-xl md:text-2xl font-black text-rose-600 mb-6"><i class="ri-folder-3-fill"></i> 프로젝트 업무 등록</h2>'+
-    '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 선택 / 새로 입력</label><div class="flex gap-2"><select id="team-task-project-select" class="flex-1 border p-3 r24 text-sm font-bold outline-none bg-gray-50" onchange="var v=this.value;document.getElementById(\'team-task-project-custom\').classList.toggle(\'hidden\',v!==\'__new__\');"><option value="">프로젝트 선택</option>'+projOpts+'<option value="__new__">+ 새 프로젝트 입력</option></select></div><input id="team-task-project-custom" type="text" placeholder="새 프로젝트명 입력" class="hidden w-full border p-3 r24 mt-2 text-sm outline-none bg-gray-50 focus:border-rose-400"></div>'+
-    '<input id="team-task-title" type="text" placeholder="업무 제목 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-rose-400 transition">'+
-    '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">담당자 지정 (@)</label><div id="team-task-assignees" class="w-full border p-4 r24 bg-white max-h-40 overflow-y-auto space-y-2 hide-scrollbar shadow-inner"></div></div>'+
-    '<div class="mb-6"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">마감일</label><input id="team-task-deadline" type="date" class="w-full border p-4 r24 outline-none text-sm focus:border-rose-400"></div>'+
-    '<div class="flex justify-end gap-3"><button onclick="closeModal(\'team-task-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button onclick="submitTeamTask()" class="px-8 py-3.5 bg-rose-600 text-white r35 text-sm font-bold shadow-lg hover:bg-rose-700 transition">등록</button></div></div>');
-  openModal('team-task-modal');
-  populateAssignees('team-task-assignees','');
-}
-function submitTeamTask(){
-  var title=document.getElementById('team-task-title').value.trim();if(!title)return showToast("제목을 입력하세요.");
-  var projSel=document.getElementById('team-task-project-select').value;
-  var projCustom=document.getElementById('team-task-project-custom').value.trim();
-  var project=projSel==='__new__'?projCustom:(projSel||'미분류');
-  if(!project)return showToast("프로젝트를 선택하거나 입력하세요.");
-  var assignees=getChecked('team-task-assignees'),deadline=document.getElementById('team-task-deadline').value;
-  if(!assignees)return showToast("담당자를 지정하세요.");
-  var id=genId();var obj={id:id,taskType:'team',project:project,category:'업무',title:title,assignees:assignees,priority:'Medium',deadline:deadline,content:'',status:'Todo',creator:USER.email,checklist:[],timestamp:Date.now()};
-  CACHE.tasks.push(obj);closeModal('team-task-modal');renderTeamProjectBoard();showToast("업무 등록 완료!");FB.set('tasks/'+id,obj);
-}
 
 // 일정 모달 (구글 연동 제거)
 function openScheduleModal(data){
@@ -1842,17 +1796,126 @@ var devQuillEditor = null; // 위키용 유지
 var devMDE = null;         // 개발 프로젝트 마크다운 에디터
 
 
-function renderWiki(){var el=document.getElementById('tab-wiki');if(!el.querySelector('#wiki-search-input')){el.innerHTML='<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-3"><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-book-read-fill text-gray-800 mr-2"></i> 사내 위키</h1><div class="flex items-center gap-3 flex-wrap"><input type="text" id="wiki-search-input" oninput="filterWikiUI()" placeholder="검색..." class="px-4 py-3 border r35 text-sm outline-none w-56 bg-white card-shadow"><button onclick="openWikiModal()" class="bg-gray-800 text-white px-6 py-3 r35 text-sm font-bold shadow-lg">+ 새 문서</button></div></div><div id="wiki-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>';}filterWikiUI();}
+function renderWiki(){
+  var el=document.getElementById('tab-wiki');
+  el.innerHTML=`
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3">
+      <h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-book-read-fill text-gray-800 mr-2"></i> 사내 위키</h1>
+      <div class="flex items-center gap-3 flex-wrap">
+        <input type="text" id="wiki-search-input" oninput="filterWikiUI()" placeholder="검색..." class="px-4 py-3 border r35 text-sm outline-none w-48 bg-white card-shadow">
+        <button onclick="openWikiModal()" class="bg-gray-800 text-white px-6 py-3 r35 text-sm font-bold shadow-lg">+ 새 문서</button>
+      </div>
+    </div>
 
-function filterWikiUI(){var k=(document.getElementById('wiki-search-input')||{value:''}).value.toLowerCase();var data=CACHE.wiki.filter(function(w){return(w.title||'').toLowerCase().indexOf(k)>-1||(w.content||'').toLowerCase().indexOf(k)>-1;});var el=document.getElementById('wiki-grid');if(!el)return;el.innerHTML=!data.length?'<p class="col-span-2 text-sm text-gray-400 text-center py-10">문서가 없습니다.</p>':data.map(function(d){var isPdf=!!d.pdfData; var previewText = isPdf ? '📄 PDF 문서' : esc(d.content.replace(/<[^>]*>?/gm, '')); return'<div onclick="openWikiDetail(\''+d.id+'\')" class="p-6 md:p-8 border r35 bg-white card-shadow hover:shadow-xl card-hover cursor-pointer transition"><div class="flex items-center gap-3 mb-3">'+(isPdf?'<i class="ri-file-pdf-2-fill text-red-500 text-2xl shrink-0"></i>':'<i class="ri-file-text-line text-gray-400 text-2xl shrink-0"></i>')+'<h3 class="font-black text-xl md:text-2xl text-gray-800 truncate">'+esc(d.title)+'</h3></div><p class="text-sm text-gray-500 line-clamp-3 leading-relaxed">'+previewText+'</p><p class="text-[10px] text-gray-400 mt-3 font-bold">'+getMemberName(d.author)+'</p></div>';}).join('');}
+    <!-- 카테고리 탭 -->
+    <div class="flex gap-2 mb-6 flex-wrap">
+      <button data-cat="all" onclick="setWikiCategory('all')" class="wiki-cat-tab px-5 py-2.5 r35 text-xs font-black border-2 border-gray-800 bg-gray-800 text-white transition">
+        전체
+      </button>
+      <button data-cat="주간미팅" onclick="setWikiCategory('주간미팅')" class="wiki-cat-tab px-5 py-2.5 r35 text-xs font-black border-2 border-gray-200 bg-white text-gray-500 hover:border-gray-400 transition">
+        📋 주간미팅
+      </button>
+      <button data-cat="내부정책" onclick="setWikiCategory('내부정책')" class="wiki-cat-tab px-5 py-2.5 r35 text-xs font-black border-2 border-gray-200 bg-white text-gray-500 hover:border-gray-400 transition">
+        📌 내부정책
+      </button>
+      <button data-cat="기타" onclick="setWikiCategory('기타')" class="wiki-cat-tab px-5 py-2.5 r35 text-xs font-black border-2 border-gray-200 bg-white text-gray-500 hover:border-gray-400 transition">
+        📁 기타
+      </button>
+    </div>
+
+    <div id="wiki-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+  `;
+  filterWikiUI();
+}
+
+function filterWikiUI(){
+  var k=(document.getElementById('wiki-search-input')||{value:''}).value.toLowerCase();
+  var cat = currentWikiCategory || 'all';
+
+  var data=CACHE.wiki.filter(function(w){
+    var catMatch = cat === 'all' || (w.category || '기타') === cat;
+    var searchMatch = (w.title||'').toLowerCase().indexOf(k)>-1||(w.content||'').toLowerCase().indexOf(k)>-1;
+    return catMatch && searchMatch;
+  });
+
+  var catColors = {
+    '주간미팅': 'bg-blue-50 text-blue-600 border-blue-100',
+    '내부정책': 'bg-red-50 text-red-600 border-red-100',
+    '기타': 'bg-gray-100 text-gray-500 border-gray-200'
+  };
+  var catIcons = { '주간미팅':'📋', '내부정책':'📌', '기타':'📁' };
+
+  var el=document.getElementById('wiki-grid');if(!el)return;
+  el.innerHTML=!data.length
+    ?'<p class="col-span-2 text-sm text-gray-400 text-center py-10">문서가 없습니다.</p>'
+    :data.map(function(d){
+      var isPdf=!!d.pdfData;
+      var docCat = d.category || '기타';
+      var catStyle = catColors[docCat] || catColors['기타'];
+      var catIcon = catIcons[docCat] || '📁';
+      var previewText = isPdf ? '📄 PDF 문서' : esc(d.content.replace(/<[^>]*>?/gm,''));
+      return'<div onclick="openWikiDetail(\''+d.id+'\')" class="p-6 md:p-8 border r35 bg-white card-shadow hover:shadow-xl card-hover cursor-pointer transition">'
+        +'<div class="flex items-center gap-3 mb-3">'
+        +(isPdf?'<i class="ri-file-pdf-2-fill text-red-500 text-2xl shrink-0"></i>':'<i class="ri-file-text-line text-gray-400 text-2xl shrink-0"></i>')
+        +'<h3 class="font-black text-xl text-gray-800 truncate flex-1">'+esc(d.title)+'</h3>'
+        +'<span class="text-[10px] font-bold px-2.5 py-1 r20 border shrink-0 '+catStyle+'">'+catIcon+' '+docCat+'</span>'
+        +'</div>'
+        +'<p class="text-sm text-gray-500 line-clamp-3 leading-relaxed">'+previewText+'</p>'
+        +'<p class="text-[10px] text-gray-400 mt-3 font-bold">'+getMemberName(d.author)+'</p>'
+        +'</div>';
+    }).join('');
+}
 
 function openWikiModal(){
-  renderModalRoot('wiki-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in"><h2 class="text-xl md:text-2xl font-black mb-6 text-gray-800">새 문서 작성</h2><input id="wiki-title" type="text" placeholder="문서 제목" class="w-full text-2xl font-black border-b-2 mb-6 p-3 outline-none text-gray-800"><div class="flex gap-3 mb-4"><button onclick="showWikiTextForm()" id="wiki-tab-text" class="px-4 py-2 r24 text-sm font-bold bg-gray-100 text-gray-800">에디터 작성</button><button onclick="showWikiPdfForm()" id="wiki-tab-pdf" class="px-4 py-2 r24 text-sm font-bold text-gray-400">PDF 파일 업로드</button></div><div id="wiki-text-form" class="mb-6"><div id="wiki-quill-container" style="height: 350px;" class="bg-gray-50 r24"></div></div><div id="wiki-pdf-form" class="hidden"><label class="flex flex-col items-center justify-center w-full h-40 upload-zone r24 bg-white mb-6"><i class="ri-file-pdf-2-fill text-5xl text-red-400 mb-2"></i><span class="text-sm font-bold text-gray-400" id="wiki-pdf-name">클릭하여 PDF 업로드</span><input type="file" accept=".pdf" class="hidden" id="wiki-pdf-input" onchange="handleWikiPdf(this)"></label></div><div class="flex justify-end gap-3"><button onclick="closeModal(\'wiki-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button><button onclick="submitWiki()" class="px-8 py-3.5 bg-gray-900 text-white r35 text-sm font-bold shadow-lg">게시</button></div></div>');
+  renderModalRoot('wiki-modal',
+    '<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in">'
+    + '<h2 class="text-xl md:text-2xl font-black mb-6 text-gray-800">새 문서 작성</h2>'
+    + '<input id="wiki-title" type="text" placeholder="문서 제목" class="w-full text-2xl font-black border-b-2 mb-6 p-3 outline-none text-gray-800">'
+
+    // 카테고리 선택
+    + '<div class="mb-5">'
+    + '<label class="block text-xs font-bold text-gray-500 mb-2 pl-2">카테고리</label>'
+    + '<div class="flex gap-2">'
+    + ['주간미팅','내부정책','기타'].map(function(c){
+        return '<label class="flex items-center gap-2 px-4 py-2.5 border-2 r24 cursor-pointer hover:bg-gray-50 transition has-[:checked]:border-gray-800 has-[:checked]:bg-gray-800 has-[:checked]:text-white">'
+          + '<input type="radio" name="wiki-cat" value="'+c+'" '+(c==='기타'?'checked':'')+' class="hidden">'
+          + '<span class="text-xs font-black">'+c+'</span>'
+          + '</label>';
+      }).join('')
+    + '</div>'
+    + '</div>'
+
+    // 에디터 탭
+    + '<div class="flex gap-3 mb-4">'
+    + '<button onclick="showWikiTextForm()" id="wiki-tab-text" class="px-4 py-2 r24 text-sm font-bold bg-gray-100 text-gray-800">에디터 작성</button>'
+    + '<button onclick="showWikiPdfForm()" id="wiki-tab-pdf" class="px-4 py-2 r24 text-sm font-bold text-gray-400">PDF 파일 업로드</button>'
+    + '</div>'
+
+    // 텍스트 에디터
+    + '<div id="wiki-text-form" class="mb-6"><div id="wiki-quill-container" style="height: 350px;" class="bg-gray-50 r24"></div></div>'
+
+    // PDF 업로드
+    + '<div id="wiki-pdf-form" class="hidden">'
+    + '<label class="flex flex-col items-center justify-center w-full h-40 upload-zone r24 bg-white mb-6">'
+    + '<i class="ri-file-pdf-2-fill text-5xl text-red-400 mb-2"></i>'
+    + '<span class="text-sm font-bold text-gray-400" id="wiki-pdf-name">클릭하여 PDF 업로드</span>'
+    + '<input type="file" accept=".pdf" class="hidden" id="wiki-pdf-input" onchange="handleWikiPdf(this)">'
+    + '</label>'
+    + '</div>'
+
+    + '<div class="flex justify-end gap-3">'
+    + '<button onclick="closeModal(\'wiki-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button>'
+    + '<button onclick="submitWiki()" class="px-8 py-3.5 bg-gray-900 text-white r35 text-sm font-bold shadow-lg">게시</button>'
+    + '</div>'
+    + '</div>'
+  );
+
   openModal('wiki-modal');
-setTimeout(function(){
-  quillEditor = new Quill('#wiki-quill-container', editorOptions); // 🌟 여기서 공통 옵션 사용!
-}, 100);
+  setTimeout(function(){
+    quillEditor = new Quill('#wiki-quill-container', editorOptions);
+  }, 100);
 }
+
 
 function showWikiTextForm(){document.getElementById('wiki-text-form').classList.remove('hidden');document.getElementById('wiki-pdf-form').classList.add('hidden');document.getElementById('wiki-tab-text').className='px-4 py-2 r24 text-sm font-bold bg-gray-100 text-gray-800';document.getElementById('wiki-tab-pdf').className='px-4 py-2 r24 text-sm font-bold text-gray-400';}
 function showWikiPdfForm(){document.getElementById('wiki-text-form').classList.add('hidden');document.getElementById('wiki-pdf-form').classList.remove('hidden');document.getElementById('wiki-tab-pdf').className='px-4 py-2 r24 text-sm font-bold bg-red-100 text-red-700';document.getElementById('wiki-tab-text').className='px-4 py-2 r24 text-sm font-bold text-gray-400';}
@@ -1861,19 +1924,43 @@ var wikiPdfBase64=null;
 function handleWikiPdf(input){if(!input.files[0])return;var file=input.files[0];if(file.size>5*1024*1024){showToast("5MB 이하 파일만 가능합니다.");return;}document.getElementById('wiki-pdf-name').innerText=file.name;var reader=new FileReader();reader.onload=function(e){wikiPdfBase64=e.target.result;};reader.readAsDataURL(file);}
 
 function submitWiki(){
-  var t=document.getElementById('wiki-title').value;if(!t)return showToast("제목을 입력하세요.");
-  var isPdfMode=!document.getElementById('wiki-pdf-form').classList.contains('hidden');
-  var id=genId();
-  if(isPdfMode&&wikiPdfBase64){
-    var obj={id:id,title:t,author:USER.email,content:'[PDF 문서]',pdfData:wikiPdfBase64,visibility:'ALL',createdAt:Date.now()};
-    CACHE.wiki.push(obj);closeModal('wiki-modal');wikiPdfBase64=null;showToast("PDF 문서 저장 완료");filterWikiUI();FB.set('wiki/'+id,obj);
-  }else{
-    if(quillEditor.getText().trim()==='') return showToast("내용을 입력하세요.");
-    var c=quillEditor.root.innerHTML;
-    var obj2={id:id,title:t,author:USER.email,content:c,isHtml:true,visibility:'ALL',createdAt:Date.now()};
-    CACHE.wiki.push(obj2);closeModal('wiki-modal');showToast("저장 완료");filterWikiUI();FB.set('wiki/'+id,obj2);
+  var t = document.getElementById('wiki-title').value;
+  if(!t) return showToast("제목을 입력하세요.");
+
+  var catEl = document.querySelector('input[name="wiki-cat"]:checked');
+  var wikiCat = catEl ? catEl.value : '기타';
+
+  var isPdfMode = !document.getElementById('wiki-pdf-form').classList.contains('hidden');
+  var id = genId();
+
+  if(isPdfMode && wikiPdfBase64){
+    var obj = {
+      id:id, title:t, author:USER.email, content:'[PDF 문서]',
+      pdfData:wikiPdfBase64, category:wikiCat,
+      visibility:'ALL', createdAt:Date.now()
+    };
+    CACHE.wiki.push(obj);
+    closeModal('wiki-modal');
+    wikiPdfBase64 = null;
+    showToast("PDF 문서 저장 완료");
+    filterWikiUI();
+    FB.set('wiki/'+id, obj);
+  } else {
+    if(quillEditor.getText().trim() === '') return showToast("내용을 입력하세요.");
+    var c = quillEditor.root.innerHTML;
+    var obj2 = {
+      id:id, title:t, author:USER.email, content:c,
+      isHtml:true, category:wikiCat,
+      visibility:'ALL', createdAt:Date.now()
+    };
+    CACHE.wiki.push(obj2);
+    closeModal('wiki-modal');
+    showToast("저장 완료");
+    filterWikiUI();
+    FB.set('wiki/'+id, obj2);
   }
 }
+
 
 function openWikiDetail(id){
   var w = CACHE.wiki.find(function(x){return String(x.id)===String(id);});
@@ -2620,34 +2707,6 @@ function submitTaskComment(id) {
   showToast("의견이 등록되었습니다.");
 }
 
-function openTeamTaskModal(){
-  var existingProjects={};CACHE.tasks.filter(function(t){return t.taskType==='team'&&t.project;}).forEach(function(t){existingProjects[t.project]=true;});
-  CACHE.devProjects.forEach(function(p){existingProjects[p.title]=true;});
-  var projOpts=Object.keys(existingProjects).map(function(p){return'<option value="'+esc(p)+'">'+esc(p)+'</option>';}).join('');
-
-  renderModalRoot('team-task-modal',
-    '<div class="bg-white r35 modal-content max-w-md p-8 md:p-10 shadow-2xl fade-in">'+
-    '<h2 class="text-xl md:text-2xl font-black text-rose-600 mb-6"><i class="ri-folder-3-fill"></i> 프로젝트 업무 등록</h2>'+
-    '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 선택 / 새로 입력</label><div class="flex gap-2"><select id="team-task-project-select" class="flex-1 border p-3 r24 text-sm font-bold outline-none bg-gray-50" onchange="var v=this.value;document.getElementById(\'team-task-project-custom\').classList.toggle(\'hidden\',v!==\'__new__\');"><option value="">프로젝트 선택</option>'+projOpts+'<option value="__new__">+ 새 프로젝트 입력</option></select></div><input id="team-task-project-custom" type="text" placeholder="새 프로젝트명 입력" class="hidden w-full border p-3 r24 mt-2 text-sm outline-none bg-gray-50 focus:border-rose-400"></div>'+
-    '<input id="team-task-title" type="text" placeholder="업무 제목 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-rose-400 transition">'+
-    '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">담당자 지정 (@)</label><div id="team-task-assignees" class="w-full border p-4 r24 bg-white max-h-40 overflow-y-auto space-y-2 hide-scrollbar shadow-inner"></div></div>'+
-    '<div class="mb-6"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">마감일</label><input id="team-task-deadline" type="date" class="w-full border p-4 r24 outline-none text-sm focus:border-rose-400"></div>'+
-    '<div class="flex justify-end gap-3"><button onclick="closeModal(\'team-task-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button onclick="submitTeamTask()" class="px-8 py-3.5 bg-rose-600 text-white r35 text-sm font-bold shadow-lg hover:bg-rose-700 transition">등록</button></div></div>');
-  openModal('team-task-modal');
-  populateAssignees('team-task-assignees','');
-}
-
-function submitTeamTask(){
-  var title=document.getElementById('team-task-title').value.trim();if(!title)return showToast("제목을 입력하세요.");
-  var projSel=document.getElementById('team-task-project-select').value;
-  var projCustom=document.getElementById('team-task-project-custom').value.trim();
-  var project=projSel==='__new__'?projCustom:(projSel||'미분류');
-  if(!project)return showToast("프로젝트를 선택하거나 입력하세요.");
-  var assignees=getChecked('team-task-assignees'),deadline=document.getElementById('team-task-deadline').value;
-  if(!assignees)return showToast("담당자를 지정하세요.");
-  var id=genId();var obj={id:id,taskType:'team',project:project,category:'업무',title:title,assignees:assignees,priority:'Medium',deadline:deadline,content:'',status:'Todo',creator:USER.email,checklist:[],timestamp:Date.now()};
-  CACHE.tasks.push(obj);closeModal('team-task-modal');renderTeamProjectBoard();showToast("업무 등록 완료!");FB.set('tasks/'+id,obj);
-}
 // 1단계: 모든 사용자의 화면을 실시간으로 동기화하는 리스너
 function listenRealtimeTasks() {
   db.ref('tasks').on('value', function(snapshot) {
@@ -2685,7 +2744,7 @@ function initApp(){
   // 🌟 실시간 리스너 실행 (이게 있어야 데이터가 즉시 반영됩니다)
   if(typeof listenRealtimeTasks === 'function') listenRealtimeTasks(); 
 
-  var nodes=['tasks','devProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices','quickLinks','products'];
+  var nodes=['tasks','devProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices','quickLinks','products','fixedExpenses'];
   var results={}, idx=0;
   
   function next(){
@@ -3260,4 +3319,420 @@ function markNotifAsRead(notifId, action) {
   closeModal('notif-modal');
   refreshNotifBadge();
   if (typeof action === 'function') action(); // 해당 탭/모달로 이동
+}
+
+/*═══════════ 고정 지출 관리 ═══════════*/
+var currentAcctView = 'all';
+var currentAcctFilter = 'all';
+
+function renderAccounting() {
+  var el = document.getElementById('tab-accounting');
+  if(!el) return;
+
+  // 유형별 합계
+  var totalMonthly = CACHE.fixedExpenses
+    .filter(function(f){ return f.cycle === '매월' && !f.isDeleted; })
+    .reduce(function(acc, f){ return acc + (Number(f.amount) || 0); }, 0);
+  var totalOneTime = CACHE.fixedExpenses
+    .filter(function(f){ return f.cycle === '일회성' && !f.isDeleted; })
+    .reduce(function(acc, f){ return acc + (Number(f.amount) || 0); }, 0);
+
+  el.innerHTML = `
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3">
+      <div>
+        <h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-calculator-fill text-cyan-600 mr-2"></i> 고정 지출 관리</h1>
+        <p class="text-xs text-gray-400 mt-1 ml-9 font-bold">Fixed Expense Management</p>
+      </div>
+      <button onclick="openFixedExpenseModal()" class="bg-cyan-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-cyan-700 transition">+ 항목 추가</button>
+    </div>
+
+    <!-- 요약 카드 -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white p-6 r35 card-shadow border border-gray-100">
+        <p class="text-[10px] font-black text-gray-400 uppercase mb-2">월 고정지출 합계</p>
+        <p class="text-2xl font-black text-cyan-600">₩${totalMonthly.toLocaleString()}</p>
+      </div>
+      <div class="bg-white p-6 r35 card-shadow border border-gray-100">
+        <p class="text-[10px] font-black text-gray-400 uppercase mb-2">일회성 합계</p>
+        <p class="text-2xl font-black text-purple-600">₩${totalOneTime.toLocaleString()}</p>
+      </div>
+      <div class="bg-white p-6 r35 card-shadow border border-gray-100">
+        <p class="text-[10px] font-black text-gray-400 uppercase mb-2">총 항목 수</p>
+        <p class="text-2xl font-black text-gray-800">${CACHE.fixedExpenses.length}건</p>
+      </div>
+      <div class="bg-white p-6 r35 card-shadow border border-gray-100">
+        <p class="text-[10px] font-black text-gray-400 uppercase mb-2">납부예정</p>
+        <p class="text-2xl font-black text-amber-500">${CACHE.fixedExpenses.filter(f=>f.payStatus==='납부예정').length}건</p>
+      </div>
+    </div>
+
+    <!-- 뷰 탭 + 필터 -->
+    <div class="flex flex-col md:flex-row gap-3 mb-4 items-start md:items-center">
+      <div class="flex bg-white border border-gray-200 p-1 r24 text-xs font-bold shadow-sm">
+        <button onclick="setAcctView('all')" id="acct-view-all" class="px-4 py-2 r20 bg-gray-100 text-gray-800">모든 지출</button>
+        <button onclick="setAcctView('type')" id="acct-view-type" class="px-4 py-2 r20 text-gray-400">지출 유형별</button>
+        <button onclick="setAcctView('status')" id="acct-view-status" class="px-4 py-2 r20 text-gray-400">납부 상태별</button>
+        <button onclick="setAcctView('calendar')" id="acct-view-calendar" class="px-4 py-2 r20 text-gray-400">월별 캘린더</button>
+      </div>
+      <div class="flex gap-2 ml-auto">
+        <select id="acct-type-filter" onchange="renderAccountingTable()" class="border p-2.5 r24 text-xs font-bold outline-none bg-white">
+          <option value="all">전체 유형</option>
+          <option>주거비</option><option>구독료</option><option>보험료</option>
+          <option>공과금</option><option>통신비</option><option>기타</option>
+        </select>
+        <select id="acct-status-filter" onchange="renderAccountingTable()" class="border p-2.5 r24 text-xs font-bold outline-none bg-white">
+          <option value="all">전체 상태</option>
+          <option>납부예정</option><option>납부완료</option>
+        </select>
+        <input type="text" id="acct-search" oninput="renderAccountingTable()" placeholder="항목 검색..." class="border p-2.5 r24 text-xs outline-none bg-white w-36">
+      </div>
+    </div>
+
+    <div id="acct-display-area" class="bg-white r35 border border-gray-100 shadow-sm overflow-x-auto"></div>
+  `;
+
+  renderAccountingTable();
+}
+
+function setAcctView(v) {
+  currentAcctView = v;
+  ['all','type','status','calendar'].forEach(function(x){
+    var btn = document.getElementById('acct-view-'+x);
+    if(btn) btn.className = 'px-4 py-2 r20 transition text-xs font-bold ' + (x===v ? 'bg-gray-100 text-gray-800' : 'text-gray-400');
+  });
+  renderAccountingTable();
+}
+
+function renderAccountingTable() {
+  var el = document.getElementById('acct-display-area');
+  if(!el) return;
+
+  var typeF = (document.getElementById('acct-type-filter')||{value:'all'}).value;
+  var statusF = (document.getElementById('acct-status-filter')||{value:'all'}).value;
+  var q = (document.getElementById('acct-search')||{value:''}).value.toLowerCase();
+
+  var data = CACHE.fixedExpenses.filter(function(f){
+    return !f.isDeleted
+      && (typeF === 'all' || f.expType === typeF)
+      && (statusF === 'all' || f.payStatus === statusF)
+      && (f.name||'').toLowerCase().includes(q);
+  }).sort(function(a,b){ return (Number(a.payDay)||99) - (Number(b.payDay)||99); });
+
+  // 월별 캘린더 뷰
+  if(currentAcctView === 'calendar') {
+    var days = {};
+    data.forEach(function(f){
+      var d = f.payDay || '건별';
+      if(!days[d]) days[d] = [];
+      days[d].push(f);
+    });
+    el.className = 'r35 border border-gray-100 shadow-sm';
+    el.innerHTML = '<div class="p-6 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">'
+      + Object.keys(days).sort(function(a,b){return Number(a)-Number(b);}).map(function(day){
+          var dayTotal = days[day].reduce(function(acc,f){return acc+(Number(f.amount)||0);},0);
+          return '<div class="bg-gray-50 r24 p-4 border border-gray-100">'
+            + '<p class="text-[10px] font-black text-gray-400 mb-2">' + (day==='건별'?'건별':day+'일') + '</p>'
+            + days[day].map(function(f){
+                return '<div class="bg-white p-2 r10 mb-1 border border-gray-100 cursor-pointer hover:border-cyan-300 transition" onclick="openFixedExpenseModal(\''+f.id+'\')">'
+                  + '<p class="text-[10px] font-bold text-gray-700 truncate">'+esc(f.name)+'</p>'
+                  + '<p class="text-[10px] font-black text-cyan-600">'+(f.amount?'₩'+Number(f.amount).toLocaleString():'금액미정')+'</p>'
+                  + '</div>';
+              }).join('')
+            + (dayTotal>0?'<p class="text-[9px] font-black text-gray-300 mt-2 text-right">합계 ₩'+dayTotal.toLocaleString()+'</p>':'')
+            + '</div>';
+        }).join('')
+      + '</div>';
+    return;
+  }
+
+  // 유형별/상태별 그룹 뷰
+  if(currentAcctView === 'type' || currentAcctView === 'status') {
+    var groupKey = currentAcctView === 'type' ? 'expType' : 'payStatus';
+    var groups = {};
+    data.forEach(function(f){ var k = f[groupKey]||'기타'; if(!groups[k]) groups[k]=[]; groups[k].push(f); });
+    el.className = 'r35 border border-gray-100 shadow-sm p-6 space-y-6';
+    el.innerHTML = Object.keys(groups).map(function(gk){
+      var gTotal = groups[gk].reduce(function(acc,f){return acc+(Number(f.amount)||0);},0);
+      return '<div>'
+        + '<div class="flex justify-between items-center mb-3">'
+        + '<h3 class="text-sm font-black text-gray-700">'+esc(gk)+' <span class="text-xs font-bold text-gray-400 ml-2">'+groups[gk].length+'건</span></h3>'
+        + '<span class="text-sm font-black text-cyan-600">₩'+gTotal.toLocaleString()+'</span>'
+        + '</div>'
+        + buildAcctTable(groups[gk])
+        + '</div>';
+    }).join('');
+    return;
+  }
+
+  // 기본 테이블 뷰
+  el.className = 'bg-white r35 border border-gray-100 shadow-sm overflow-x-auto';
+  el.innerHTML = buildAcctTable(data);
+}
+
+function buildAcctTable(data) {
+  if(!data.length) return '<p class="text-sm text-gray-300 text-center py-10 font-bold">항목이 없습니다.</p>';
+
+  var typeColors = {
+    '주거비':'bg-blue-100 text-blue-700',
+    '구독료':'bg-violet-100 text-violet-700',
+    '보험료':'bg-orange-100 text-orange-700',
+    '공과금':'bg-green-100 text-green-700',
+    '통신비':'bg-pink-100 text-pink-700',
+    '기타':'bg-gray-100 text-gray-500'
+  };
+  var methodColors = {
+    '자동이체':'bg-sky-50 text-sky-600',
+    '계좌이체':'bg-teal-50 text-teal-600',
+    '기타':'bg-gray-50 text-gray-500'
+  };
+
+  return '<table class="w-full text-left text-xs border-collapse whitespace-nowrap">'
+    + '<thead class="bg-gray-50 border-b border-gray-100 text-gray-400 font-black uppercase tracking-wider">'
+    + '<tr>'
+    + '<th class="p-4 pl-6">지출 항목</th>'
+    + '<th class="p-4 text-right">금액</th>'
+    + '<th class="p-4">지출 유형</th>'
+    + '<th class="p-4">결제일</th>'
+    + '<th class="p-4">결제 방법</th>'
+    + '<th class="p-4">납부 주기</th>'
+    + '<th class="p-4">납부 상태</th>'
+    + '<th class="p-4">계좌정보</th>'
+    + '<th class="p-4">날짜/비고</th>'
+    + '<th class="p-4"></th>'
+    + '</tr>'
+    + '</thead>'
+    + '<tbody class="divide-y divide-gray-50">'
+    + data.map(function(f){
+        var tc = typeColors[f.expType] || typeColors['기타'];
+        var mc = methodColors[f.payMethod] || methodColors['기타'];
+        var statusBg = f.payStatus === '납부완료'
+          ? 'bg-green-100 text-green-700'
+          : 'bg-amber-100 text-amber-600';
+        return '<tr class="hover:bg-gray-50/50 transition cursor-pointer" onclick="openFixedExpenseModal(\''+f.id+'\')">'
+          + '<td class="p-4 pl-6"><p class="font-black text-gray-800">'+esc(f.name)+'</p></td>'
+          + '<td class="p-4 text-right font-black text-gray-800">'+(f.amount?'₩'+Number(f.amount).toLocaleString():'-')+'</td>'
+          + '<td class="p-4"><span class="px-2.5 py-1 r20 font-bold text-[10px] '+tc+'">'+esc(f.expType||'기타')+'</span></td>'
+          + '<td class="p-4 font-bold text-gray-500">'+(f.payDay?f.payDay+'일':'건별')+'</td>'
+          + '<td class="p-4"><span class="px-2.5 py-1 r20 font-bold text-[10px] '+mc+'">'+esc(f.payMethod||'-')+'</span></td>'
+          + '<td class="p-4 font-bold text-gray-500">'+esc(f.cycle||'-')+'</td>'
+          + '<td class="p-4"><span class="px-2.5 py-1 r20 font-bold text-[10px] '+statusBg+'">'+esc(f.payStatus||'납부예정')+'</span></td>'
+          + '<td class="p-4 text-gray-400 font-medium">'+esc(f.accountInfo||'-')+'</td>'
+          + '<td class="p-4 text-gray-400">'+esc(f.note||'-')+'</td>'
+          + '<td class="p-4"><button onclick="event.stopPropagation();confirmDeleteFixedExpense(\''+f.id+'\')" class="text-red-300 hover:text-red-500"><i class="ri-delete-bin-line"></i></button></td>'
+          + '</tr>';
+      }).join('')
+    + '</tbody></table>';
+}
+
+function openFixedExpenseModal(id) {
+  var f = id ? CACHE.fixedExpenses.find(function(x){return x.id===id;}) : null;
+  renderModalRoot('fixed-expense-modal', `
+    <div class="bg-white r35 modal-content max-w-lg p-8 md:p-10 shadow-2xl fade-in overflow-y-auto max-h-[90vh]">
+      <h2 class="text-xl font-black text-cyan-700 mb-6"><i class="ri-calculator-fill mr-2"></i>${f?'항목 수정':'고정 지출 추가'}</h2>
+
+      <input id="fe-name" type="text" value="${f?esc(f.name):''}" placeholder="지출 항목명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-cyan-400">
+
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">금액 (원)</label>
+          <input id="fe-amount" type="number" value="${f?f.amount:''}" placeholder="0" class="w-full border p-3 r20 text-sm font-bold text-cyan-700 bg-gray-50 outline-none">
+        </div>
+        <div>
+          <label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">결제일</label>
+          <input id="fe-payday" type="text" value="${f?esc(f.payDay):''}" placeholder="예: 1, 10, 25, 건별" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">지출 유형</label>
+          <select id="fe-type" class="w-full border p-3 r20 text-sm font-bold bg-gray-50 outline-none">
+            ${['주거비','구독료','보험료','공과금','통신비','기타'].map(v=>`<option ${f&&f.expType===v?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">결제 방법</label>
+          <select id="fe-method" class="w-full border p-3 r20 text-sm font-bold bg-gray-50 outline-none">
+            ${['자동이체','계좌이체','기타'].map(v=>`<option ${f&&f.payMethod===v?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">납부 주기</label>
+          <select id="fe-cycle" class="w-full border p-3 r20 text-sm font-bold bg-gray-50 outline-none">
+            ${['매월','일회성','분기','연간'].map(v=>`<option ${f&&f.cycle===v?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">납부 상태</label>
+          <select id="fe-status" class="w-full border p-3 r20 text-sm font-bold bg-gray-50 outline-none">
+            ${['납부예정','납부완료'].map(v=>`<option ${f&&f.payStatus===v?'selected':''}>${v}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="mb-4">
+        <label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">계좌 정보</label>
+        <input id="fe-account" type="text" value="${f?esc(f.accountInfo):''}" placeholder="예: 농협 301-0365-0597-71" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none">
+      </div>
+
+      <div class="mb-6">
+        <label class="block text-[10px] font-black text-gray-400 mb-1 pl-1">비고</label>
+        <input id="fe-note" type="text" value="${f?esc(f.note||''):''}" placeholder="메모" class="w-full border p-3 r20 text-sm bg-gray-50 outline-none">
+      </div>
+
+      <input type="hidden" id="fe-edit-id" value="${f?f.id:''}">
+      <div class="flex justify-end gap-3">
+        <button onclick="closeModal('fixed-expense-modal')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button>
+        <button onclick="submitFixedExpense()" class="px-8 py-3.5 bg-cyan-600 text-white r35 text-sm font-bold shadow-lg">${f?'수정':'추가'}</button>
+      </div>
+    </div>
+  `);
+  openModal('fixed-expense-modal');
+}
+
+function submitFixedExpense() {
+  var id = document.getElementById('fe-edit-id').value;
+  var name = document.getElementById('fe-name').value.trim();
+  if(!name) return showToast("항목명을 입력하세요.");
+  var obj = {
+    name: name,
+    amount: Number(document.getElementById('fe-amount').value) || 0,
+    payDay: document.getElementById('fe-payday').value,
+    expType: document.getElementById('fe-type').value,
+    payMethod: document.getElementById('fe-method').value,
+    cycle: document.getElementById('fe-cycle').value,
+    payStatus: document.getElementById('fe-status').value,
+    accountInfo: document.getElementById('fe-account').value,
+    note: document.getElementById('fe-note').value,
+    updatedAt: Date.now()
+  };
+  if(id) {
+    var idx = CACHE.fixedExpenses.findIndex(function(x){return x.id===id;});
+    if(idx>-1) Object.assign(CACHE.fixedExpenses[idx], obj);
+    FB.patch('fixedExpenses/'+id, obj);
+    showToast("수정 완료!");
+  } else {
+    var newId = genId();
+    obj.id = newId; obj.creator = USER.email; obj.timestamp = Date.now();
+    CACHE.fixedExpenses.push(obj);
+    FB.set('fixedExpenses/'+newId, obj);
+    showToast("추가 완료!");
+  }
+  closeModal('fixed-expense-modal');
+  renderAccounting();
+}
+
+function confirmDeleteFixedExpense(id) {
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
+  openCustomConfirm("항목 삭제", "삭제하시겠습니까?", function(){
+    CACHE.fixedExpenses = CACHE.fixedExpenses.filter(function(x){return x.id!==id;});
+    FB.patch('fixedExpenses/'+id, { isDeleted: true, deletedAt: nowFmt(), deletedBy: USER.name });
+    showToast("삭제 완료");
+    renderAccounting();
+  });
+}
+
+/*═══════════ 사내 위키 카테고리 분리 ═══════════*/
+var currentWikiCategory = 'all';
+
+function setWikiCategory(cat) {
+  currentWikiCategory = cat;
+  document.querySelectorAll('.wiki-cat-tab').forEach(function(btn){
+    var isActive = btn.getAttribute('data-cat') === cat;
+    btn.className = 'wiki-cat-tab px-5 py-2.5 r35 text-xs font-black border-2 transition '
+      + (isActive ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-200 bg-white text-gray-500 hover:border-gray-400');
+  });
+  filterWikiUI();
+}
+
+/*═══════════ 전사업무 그룹 지정 ═══════════*/
+function openTeamTaskModal(){
+  var existingProjects={};
+  CACHE.tasks.filter(function(t){return t.taskType==='team'&&t.project;}).forEach(function(t){existingProjects[t.project]=true;});
+  CACHE.devProjects.forEach(function(p){existingProjects[p.title]=true;});
+  var projOpts=Object.keys(existingProjects).map(function(p){return'<option value="'+esc(p)+'">'+esc(p)+'</option>';}).join('');
+
+  renderModalRoot('team-task-modal',
+    '<div class="bg-white r35 modal-content max-w-md p-8 md:p-10 shadow-2xl fade-in">'
+    + '<h2 class="text-xl md:text-2xl font-black text-rose-600 mb-6"><i class="ri-folder-3-fill"></i> 프로젝트 업무 등록</h2>'
+
+    // 프로젝트 선택
+    + '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 선택 / 새로 입력</label>'
+    + '<select id="team-task-project-select" class="w-full border p-3 r24 text-sm font-bold outline-none bg-gray-50 mb-2" onchange="var v=this.value;document.getElementById(\'team-task-project-custom\').classList.toggle(\'hidden\',v!==\'__new__\');"><option value="">프로젝트 선택</option>'+projOpts+'<option value="__new__">+ 새 프로젝트 입력</option></select>'
+    + '<input id="team-task-project-custom" type="text" placeholder="새 프로젝트명 입력" class="hidden w-full border p-3 r24 text-sm outline-none bg-gray-50 focus:border-rose-400"></div>'
+
+    // 제목
+    + '<input id="team-task-title" type="text" placeholder="업무 제목 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-rose-400 transition">'
+
+    // 담당자
+    + '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">담당자 지정</label>'
+    + '<div id="team-task-assignees" class="w-full border r24 bg-white overflow-hidden shadow-inner"></div></div>'
+
+    // 공개 범위
+    + '<div class="mb-4">'
+    + '<label class="block text-xs font-bold text-gray-500 mb-2 pl-2">공개 범위</label>'
+    + '<div class="flex gap-2">'
+    + '<label class="flex-1 flex items-center justify-center gap-2 p-3 border-2 r24 cursor-pointer hover:bg-rose-50 transition has-[:checked]:border-rose-500 has-[:checked]:bg-rose-50">'
+    + '<input type="radio" name="task-visibility" value="all" checked onchange="document.getElementById(\'task-group-picker\').classList.add(\'hidden\')" class="hidden">'
+    + '<i class="ri-earth-fill text-rose-400"></i><span class="text-xs font-black">전체 공개</span>'
+    + '</label>'
+    + '<label class="flex-1 flex items-center justify-center gap-2 p-3 border-2 r24 cursor-pointer hover:bg-indigo-50 transition has-[:checked]:border-indigo-500 has-[:checked]:bg-indigo-50">'
+    + '<input type="radio" name="task-visibility" value="group" onchange="document.getElementById(\'task-group-picker\').classList.remove(\'hidden\')" class="hidden">'
+    + '<i class="ri-lock-fill text-indigo-400"></i><span class="text-xs font-black">그룹 지정</span>'
+    + '</label>'
+    + '</div>'
+    + '</div>'
+
+    // 그룹 멤버 피커 (그룹 선택 시 표시)
+    + '<div id="task-group-picker" class="hidden mb-4">'
+    + '<label class="block text-xs font-bold text-gray-500 mb-2 pl-2">열람 가능 인원 <span class="text-gray-400 font-normal">(담당자 외 추가 공개)</span></label>'
+    + '<div id="team-task-group-members" class="w-full border r24 bg-white overflow-hidden shadow-inner"></div>'
+    + '</div>'
+
+    // 마감일
+    + '<div class="mb-6"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">마감일</label>'
+    + '<input id="team-task-deadline" type="date" class="w-full border p-4 r24 outline-none text-sm focus:border-rose-400"></div>'
+
+    + '<div class="flex justify-end gap-3">'
+    + '<button onclick="closeModal(\'team-task-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold">취소</button>'
+    + '<button onclick="submitTeamTask()" class="px-8 py-3.5 bg-rose-600 text-white r35 text-sm font-bold shadow-lg">등록</button>'
+    + '</div></div>'
+  );
+
+  openModal('team-task-modal');
+  populateAssignees('team-task-assignees', '');
+  populateAssignees('team-task-group-members', '');
+}
+
+function submitTeamTask(){
+  var title=document.getElementById('team-task-title').value.trim();
+  if(!title)return showToast("제목을 입력하세요.");
+  var projSel=document.getElementById('team-task-project-select').value;
+  var projCustom=document.getElementById('team-task-project-custom').value.trim();
+  var project=projSel==='__new__'?projCustom:(projSel||'미분류');
+  if(!project)return showToast("프로젝트를 선택하거나 입력하세요.");
+  var assignees=getChecked('team-task-assignees'),deadline=document.getElementById('team-task-deadline').value;
+  if(!assignees)return showToast("담당자를 지정하세요.");
+
+  // 공개 범위
+  var visibilityEl = document.querySelector('input[name="task-visibility"]:checked');
+  var visibility = visibilityEl ? visibilityEl.value : 'all';
+  var groupMembers = visibility === 'group' ? getChecked('team-task-group-members') : '';
+
+  var id=genId();
+  var obj={
+    id:id, taskType:'team', project:project, category:'업무', title:title,
+    assignees:assignees, priority:'Medium', deadline:deadline, content:'',
+    status:'Todo', creator:USER.email, checklist:[], timestamp:Date.now(),
+    visibility: visibility,
+    groupMembers: groupMembers
+  };
+  CACHE.tasks.push(obj);
+  closeModal('team-task-modal');
+  renderTeamProjectBoard();
+  showToast("업무 등록 완료!");
+  FB.set('tasks/'+id,obj);
 }

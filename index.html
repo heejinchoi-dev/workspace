@@ -110,23 +110,24 @@
       </div>
       
       <nav class="flex-1 space-y-1.5 text-sm font-bold text-gray-500">
-        <div onclick="showTab('home')"      data-tab="home"      class="sidebar-item flex items-center gap-4 p-3.5 r24 active cursor-pointer hover:bg-white hover:shadow-sm transition"><i class="ri-home-smile-2-fill text-xl"></i> 대시보드</div>
+        <div onclick="showTab('home')"        data-tab="home"        class="sidebar-item flex items-center gap-4 p-3.5 r24 active cursor-pointer hover:bg-white hover:shadow-sm transition"><i class="ri-home-smile-2-fill text-xl"></i> 대시보드</div>
         <div class="my-3 border-t border-gray-100"></div>
-        <div onclick="showTab('calendar')"  data-tab="calendar"  class="sidebar-item flex items-center gap-4 p-3.5 r24 text-rose-500 cursor-pointer hover:bg-white transition"><i class="ri-calendar-todo-fill text-xl"></i> 일정 및 할 일</div>
-        <div onclick="showTab('teamcal')"   data-tab="teamcal"   class="sidebar-item flex items-center gap-4 p-3.5 r24 text-blue-600 cursor-pointer hover:bg-white transition"><i class="ri-calendar-check-fill text-xl"></i> 전사 캘린더</div>
-        <div onclick="showTab('products')"  data-tab="products"  class="sidebar-item flex items-center gap-4 p-3.5 r24 text-pink-600 cursor-pointer hover:bg-white transition"><i class="ri-box-3-fill text-xl"></i> 제품 라인업</div>
-        <div onclick="showTab('dev')"       data-tab="dev"       class="sidebar-item flex items-center gap-4 p-3.5 r24 text-indigo-600 cursor-pointer hover:bg-white transition"><i class="ri-macbook-fill text-xl"></i> 개발 프로젝트</div>
-        <div onclick="showTab('crm')"       data-tab="crm"       class="sidebar-item flex items-center gap-4 p-3.5 r24 text-emerald-600 cursor-pointer hover:bg-white transition"><i class="ri-briefcase-4-fill text-xl"></i> 영업 파이프라인</div>
-        <div onclick="showTab('cs')"        data-tab="cs"        class="sidebar-item flex items-center gap-4 p-3.5 r24 text-orange-500 cursor-pointer hover:bg-white transition"><i class="ri-customer-service-2-fill text-xl"></i> CS 고객지원</div>
+        <div onclick="showTab('calendar')"    data-tab="calendar"    class="sidebar-item flex items-center gap-4 p-3.5 r24 text-rose-500 cursor-pointer hover:bg-white transition"><i class="ri-calendar-todo-fill text-xl"></i> 일정 및 할 일</div>
+        <div onclick="showTab('teamcal')"     data-tab="teamcal"     class="sidebar-item flex items-center gap-4 p-3.5 r24 text-blue-600 cursor-pointer hover:bg-white transition"><i class="ri-calendar-check-fill text-xl"></i> 전사 캘린더</div>
+        <div onclick="showTab('products')"    data-tab="products"    class="sidebar-item flex items-center gap-4 p-3.5 r24 text-pink-600 cursor-pointer hover:bg-white transition"><i class="ri-box-3-fill text-xl"></i> 제품 라인업</div>
+        <div onclick="showTab('dev')"         data-tab="dev"         class="sidebar-item flex items-center gap-4 p-3.5 r24 text-indigo-600 cursor-pointer hover:bg-white transition"><i class="ri-macbook-fill text-xl"></i> 개발 프로젝트</div>
+        <div onclick="showTab('crm')"         data-tab="crm"         class="sidebar-item flex items-center gap-4 p-3.5 r24 text-emerald-600 cursor-pointer hover:bg-white transition"><i class="ri-briefcase-4-fill text-xl"></i> 영업 파이프라인</div>
+        <div onclick="showTab('cs')"          data-tab="cs"          class="sidebar-item flex items-center gap-4 p-3.5 r24 text-orange-500 cursor-pointer hover:bg-white transition"><i class="ri-customer-service-2-fill text-xl"></i> CS 고객지원</div>
         <div class="my-3 border-t border-gray-100"></div>
-        <div onclick="showTab('approval')"  data-tab="approval"  class="sidebar-item flex items-center gap-4 p-3.5 r24 text-gray-700 cursor-pointer hover:bg-white transition"><i class="ri-bank-card-fill text-xl"></i> 지출/결재 <span id="badge-appr" class="hidden bg-blue-500 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-auto">0</span></div>
-        <div onclick="showTab('vault')"     data-tab="vault"     class="sidebar-item flex items-center gap-4 p-3.5 r24 text-amber-600 cursor-pointer hover:bg-white transition"><i class="ri-shield-keyhole-fill text-xl"></i> 팀 보안 금고</div>
-        <div onclick="showTab('wiki')"      data-tab="wiki"      class="sidebar-item flex items-center gap-4 p-3.5 r24 text-gray-700 cursor-pointer hover:bg-white transition"><i class="ri-book-read-fill text-xl"></i> 사내 위키</div>
-        <div onclick="showTab('leaves')"    data-tab="leaves"    class="sidebar-item flex items-center gap-4 p-3.5 r24 text-purple-600 cursor-pointer hover:bg-white transition"><i class="ri-flight-takeoff-fill text-xl"></i> 휴가/근태 <span id="badge-leave" class="hidden bg-purple-500 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-auto">0</span></div>
-        <div onclick="showTab('directory')" data-tab="directory" class="sidebar-item flex items-center gap-4 p-3.5 r24 text-teal-600 cursor-pointer hover:bg-white transition"><i class="ri-group-fill text-xl"></i> 조직도</div>
+        <div onclick="showTab('approval')"    data-tab="approval"    class="sidebar-item flex items-center gap-4 p-3.5 r24 text-gray-700 cursor-pointer hover:bg-white transition"><i class="ri-bank-card-fill text-xl"></i> 지출/결재 <span id="badge-appr" class="hidden bg-blue-500 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-auto">0</span></div>
+        <div onclick="showTab('accounting')"  data-tab="accounting"  class="sidebar-item flex items-center gap-4 p-3.5 r24 text-cyan-600 cursor-pointer hover:bg-white transition"><i class="ri-calculator-fill text-xl"></i> 고정 지출 관리</div>
+        <div onclick="showTab('vault')"       data-tab="vault"       class="sidebar-item flex items-center gap-4 p-3.5 r24 text-amber-600 cursor-pointer hover:bg-white transition"><i class="ri-shield-keyhole-fill text-xl"></i> 팀 보안 금고</div>
+        <div onclick="showTab('wiki')"        data-tab="wiki"        class="sidebar-item flex items-center gap-4 p-3.5 r24 text-gray-700 cursor-pointer hover:bg-white transition"><i class="ri-book-read-fill text-xl"></i> 사내 위키</div>
+        <div onclick="showTab('leaves')"      data-tab="leaves"      class="sidebar-item flex items-center gap-4 p-3.5 r24 text-purple-600 cursor-pointer hover:bg-white transition"><i class="ri-flight-takeoff-fill text-xl"></i> 휴가/근태 <span id="badge-leave" class="hidden bg-purple-500 text-white text-[9px] px-1.5 py-0.5 rounded-full ml-auto">0</span></div>
+        <div onclick="showTab('directory')"   data-tab="directory"   class="sidebar-item flex items-center gap-4 p-3.5 r24 text-teal-600 cursor-pointer hover:bg-white transition"><i class="ri-group-fill text-xl"></i> 조직도</div>
         <div id="admin-menu" class="hidden">
           <div class="my-3 border-t border-gray-100"></div>
-          <div onclick="showTab('admin')"   data-tab="admin"     class="sidebar-item flex items-center gap-4 p-3.5 r24 text-red-600 cursor-pointer hover:bg-white transition"><i class="ri-settings-3-fill text-xl"></i> 관리자 설정</div>
+          <div onclick="showTab('admin')"     data-tab="admin"       class="sidebar-item flex items-center gap-4 p-3.5 r24 text-red-600 cursor-pointer hover:bg-white transition"><i class="ri-settings-3-fill text-xl"></i> 관리자 설정</div>
         </div>
       </nav>
 
@@ -154,19 +155,20 @@
     </aside>
 
     <main id="content" class="flex-1 overflow-y-auto p-4 md:p-8 relative hide-scrollbar">
-      <div id="tab-home"      class="fade-in max-w-6xl mx-auto"></div>
-      <div id="tab-calendar"  class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 6rem)"></div>
-      <div id="tab-teamcal"   class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
-      <div id="tab-products"  class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
-      <div id="tab-dev"       class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
-      <div id="tab-crm"       class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
-      <div id="tab-cs"        class="fade-in max-w-6xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
-      <div id="tab-approval"  class="fade-in max-w-6xl mx-auto hidden"></div>
-      <div id="tab-vault"     class="fade-in max-w-6xl mx-auto hidden"></div>
-      <div id="tab-wiki"      class="fade-in max-w-6xl mx-auto hidden"></div>
-      <div id="tab-leaves"    class="fade-in max-w-5xl mx-auto hidden"></div>
-      <div id="tab-directory" class="fade-in max-w-6xl mx-auto hidden"></div>
-      <div id="tab-admin"     class="fade-in max-w-5xl mx-auto hidden"></div>
+      <div id="tab-home"        class="fade-in max-w-6xl mx-auto"></div>
+      <div id="tab-calendar"    class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 6rem)"></div>
+      <div id="tab-teamcal"     class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
+      <div id="tab-products"    class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
+      <div id="tab-dev"         class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
+      <div id="tab-crm"         class="fade-in max-w-7xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
+      <div id="tab-cs"          class="fade-in max-w-6xl mx-auto hidden flex flex-col" style="height:calc(100vh - 4rem)"></div>
+      <div id="tab-approval"    class="fade-in max-w-6xl mx-auto hidden"></div>
+      <div id="tab-accounting"  class="fade-in max-w-7xl mx-auto hidden"></div>
+      <div id="tab-vault"       class="fade-in max-w-6xl mx-auto hidden"></div>
+      <div id="tab-wiki"        class="fade-in max-w-6xl mx-auto hidden"></div>
+      <div id="tab-leaves"      class="fade-in max-w-5xl mx-auto hidden"></div>
+      <div id="tab-directory"   class="fade-in max-w-6xl mx-auto hidden"></div>
+      <div id="tab-admin"       class="fade-in max-w-5xl mx-auto hidden"></div>
     </main>
   </div>
 </div>
