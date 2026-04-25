@@ -1036,17 +1036,19 @@ function openDevDetail(id){
             </div>
           </div>
 
-          <!-- 상세 설명 (인라인 편집) -->
+          <!-- 상세 설명 (블록 에디터) -->
           <div class="mb-6">
             <div class="flex justify-between items-center mb-3">
               <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider flex items-center gap-2">
                 <i class="ri-file-text-line text-indigo-400"></i> 상세 설명
               </h3>
-              <button id="dev-desc-edit-btn" onclick="toggleDevDescEdit('${d.id}')"
-                class="text-xs text-indigo-500 hover:text-indigo-700 font-bold flex items-center gap-1 px-3 py-1 r20 hover:bg-indigo-50 transition">
-                <i class="ri-edit-line"></i> 수정
-              </button>
+              <div class="flex items-center gap-2">
+                <div id="block-save-dot" class="block-save-dot" style="opacity:0" title="자동 저장됨"></div>
+                <span class="text-[10px] text-gray-300 font-bold">'/' 로 블록 변경</span>
+              </div>
             </div>
+            <div id="block-editor-container" class="min-h-[80px] pl-6 relative"></div>
+          </div>
             <!-- 뷰 모드 -->
             <div id="dev-desc-view" onclick="toggleDevDescEdit('${d.id}')"
               class="prose prose-sm max-w-none bg-gray-50/50 p-5 r16 border border-gray-100 min-h-[60px] cursor-text hover:border-indigo-200 transition">
@@ -1116,6 +1118,7 @@ function openDevDetail(id){
   `;
 
   renderDevProjectTasks(d.id);
+  initBlockEditor(d.id);
   var cl = document.getElementById('dev-cmt-list');
   if(cl) cl.scrollTop = cl.scrollHeight;
 }
@@ -4250,4 +4253,275 @@ function submitTeamTask(){
   renderTeamProjectBoard();
   showToast("업무 등록 완료!");
   FB.set('tasks/'+id,obj);
+}
+
+/*═══════════ Notion 스타일 블록 에디터 ═══════════*/
+var devBlocks = [];
+var devBlockDevId = null;
+var devBlockSaveTimer = null;
+var slashMenuFocusBlockId = null;
+var slashMenuCursor = 0;
+
+var SLASH_TYPES = [
+  { type:'text',    icon:'ri-text',              label:'텍스트',      desc:'기본 텍스트 블록' },
+  { type:'h1',      icon:'ri-h-1',               label:'제목 1',      desc:'큰 제목' },
+  { type:'h2',      icon:'ri-h-2',               label:'제목 2',      desc:'중간 제목' },
+  { type:'h3',      icon:'ri-h-3',               label:'제목 3',      desc:'작은 제목' },
+  { type:'code',    icon:'ri-code-box-line',     label:'코드 블록',   desc:'코드 작성 (다크 배경)' },
+  { type:'bullet',  icon:'ri-list-unordered',    label:'글머리 기호', desc:'• 목록 항목' },
+  { type:'quote',   icon:'ri-double-quotes-l',   label:'인용구',      desc:'강조 인용 텍스트' },
+  { type:'divider', icon:'ri-separator',          label:'구분선',      desc:'가로 구분선 삽입' },
+];
+
+function initBlockEditor(devId) {
+  devBlockDevId = devId;
+  var d = CACHE.devProjects.find(function(x){ return x.id === devId; });
+  if(!d) return;
+  if(d.blocks && d.blocks.length) {
+    devBlocks = JSON.parse(JSON.stringify(d.blocks));
+  } else {
+    devBlocks = [{ id: genId(), type: 'text', content: d.note || '' }];
+  }
+  renderBlockEditor();
+}
+
+function renderBlockEditor() {
+  var container = document.getElementById('block-editor-container');
+  if(!container) return;
+  container.innerHTML = devBlocks.map(function(block, idx){
+    return renderBlockHtml(block, idx);
+  }).join('') +
+  '<div onclick="addBlockAt(' + devBlocks.length + ')" class="py-2 px-2 text-gray-300 hover:text-indigo-400 text-xs font-bold cursor-pointer flex items-center gap-1.5 mt-1 transition">' +
+    '<i class="ri-add-line text-sm"></i> 블록 추가' +
+  '</div>';
+  devBlocks.forEach(function(block, idx){ attachBlockEv(block, idx); });
+}
+
+function renderBlockHtml(block, idx) {
+  if(block.type === 'divider') {
+    return '<div class="dev-block" data-bid="'+block.id+'">' +
+      '<hr class="block-divider flex-1">' +
+      '<button onclick="deleteBlock(\''+block.id+'\')" class="absolute right-0 top-0 text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 text-xs"><i class="ri-close-line"></i></button>' +
+    '</div>';
+  }
+  if(block.type === 'code') {
+    var langs = ['bash','javascript','typescript','python','sql','json','yaml','go','java','css','html'];
+    var langOpts = langs.map(function(l){ return '<option value="'+l+'" '+(block.lang===l?'selected':'')+'>'+l+'</option>'; }).join('');
+    return '<div class="dev-block" data-bid="'+block.id+'" data-idx="'+idx+'">' +
+      '<div class="code-block-wrap flex-1">' +
+        '<div class="code-block-toolbar">' +
+          '<div class="mac-dots"><span></span><span></span><span></span></div>' +
+          '<select onchange="changeBlockProp(\''+block.id+'\',\'lang\',this.value)" class="text-[10px] bg-[#1e293b] text-gray-400 border border-[#334155] outline-none r8 px-2 py-0.5 font-bold cursor-pointer">'+langOpts+'</select>' +
+          '<button onclick="deleteBlock(\''+block.id+'\')" class="text-gray-600 hover:text-red-400 text-xs ml-2"><i class="ri-delete-bin-line"></i></button>' +
+        '</div>' +
+        '<textarea class="code-block-textarea" data-bid="'+block.id+'" spellcheck="false" ' +
+          'placeholder="코드를 입력하세요... (Tab = 들여쓰기)" ' +
+          'oninput="updateBlock(\''+block.id+'\',this.value)" ' +
+          'onkeydown="codeKeydown(event,\''+block.id+'\','+idx+')" ' +
+          '>'+escBlock(block.content||'')+'</textarea>' +
+      '</div>' +
+    '</div>';
+  }
+  var classMap = {
+    text:'block-text', h1:'block-h1', h2:'block-h2', h3:'block-h3',
+    bullet:'block-bullet', quote:'block-quote'
+  };
+  var ph = { text:"입력하세요... '/'로 블록 변경", h1:'제목 1', h2:'제목 2', h3:'제목 3', bullet:'목록 항목', quote:'인용구' };
+  return '<div class="dev-block" data-bid="'+block.id+'" data-idx="'+idx+'">' +
+    '<i class="ri-draggable block-handle"></i>' +
+    '<div contenteditable="true" data-bid="'+block.id+'" data-placeholder="'+( ph[block.type]||'' )+'" ' +
+      'class="block-content '+( classMap[block.type]||'block-text' )+' flex-1 outline-none px-2 py-0.5 rounded-lg hover:bg-gray-50 focus:bg-indigo-50/20 transition">' +
+      escBlock(block.content||'') +
+    '</div>' +
+  '</div>';
+}
+
+function escBlock(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function attachBlockEv(block, idx) {
+  if(block.type === 'code') {
+    var ta = document.querySelector('textarea.code-block-textarea[data-bid="'+block.id+'"]');
+    if(ta) {
+      ta.style.height = 'auto';
+      ta.style.height = Math.max(80, ta.scrollHeight) + 'px';
+      ta.addEventListener('input', function(){ ta.style.height='auto'; ta.style.height=Math.max(80,ta.scrollHeight)+'px'; });
+    }
+    return;
+  }
+  var el = document.querySelector('.block-content[data-bid="'+block.id+'"]');
+  if(!el) return;
+
+  el.addEventListener('input', function(){
+    var txt = el.innerText;
+    updateBlock(block.id, txt);
+    if(txt === '/') { showSlashMenu(el, block.id); }
+    else { hideSlashMenu(); }
+  });
+
+  el.addEventListener('keydown', function(e) {
+    var menu = document.getElementById('slash-menu');
+    if(menu) {
+      if(e.key==='ArrowDown'){ e.preventDefault(); moveSlash(1); return; }
+      if(e.key==='ArrowUp'){   e.preventDefault(); moveSlash(-1); return; }
+      if(e.key==='Enter'){     e.preventDefault(); pickSlash(block.id); return; }
+      if(e.key==='Escape'){    hideSlashMenu(); return; }
+    }
+    if(e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault(); hideSlashMenu();
+      addBlockAt(idx + 1);
+    }
+    if(e.key === 'Backspace' && (el.innerText===''||el.innerText==='\n')) {
+      e.preventDefault();
+      deleteBlock(block.id);
+    }
+  });
+
+  el.addEventListener('blur', function(){
+    setTimeout(hideSlashMenu, 200);
+    schedSave();
+  });
+}
+
+function updateBlock(bid, content) {
+  var b = devBlocks.find(function(x){ return x.id===bid; });
+  if(b) b.content = content;
+  schedSave();
+}
+
+function changeBlockProp(bid, key, val) {
+  var b = devBlocks.find(function(x){ return x.id===bid; });
+  if(b) { b[key] = val; schedSave(); }
+}
+
+function addBlockAt(idx) {
+  var nb = { id: genId(), type: 'text', content: '' };
+  devBlocks.splice(idx, 0, nb);
+  renderBlockEditor();
+  setTimeout(function(){
+    var el = document.querySelector('.block-content[data-bid="'+nb.id+'"]');
+    if(el) el.focus();
+  }, 30);
+}
+
+function deleteBlock(bid) {
+  var idx = devBlocks.findIndex(function(x){ return x.id===bid; });
+  if(devBlocks.length <= 1) {
+    devBlocks[0].content = '';
+    renderBlockEditor();
+    return;
+  }
+  devBlocks.splice(idx, 1);
+  renderBlockEditor();
+  var fi = Math.max(0, idx - 1);
+  setTimeout(function(){
+    var target = devBlocks[fi];
+    if(!target) return;
+    var el = document.querySelector('.block-content[data-bid="'+target.id+'"]');
+    if(el){ el.focus(); cursorEnd(el); }
+  }, 30);
+  schedSave();
+}
+
+function selectBlockType(bid, type) {
+  hideSlashMenu();
+  var b = devBlocks.find(function(x){ return x.id===bid; });
+  if(!b) return;
+  b.type = type;
+  b.content = '';
+  if(type==='code' && !b.lang) b.lang = 'bash';
+  if(type==='divider') b.content = '';
+  renderBlockEditor();
+  setTimeout(function(){
+    var el = document.querySelector('.block-content[data-bid="'+bid+'"]') ||
+             document.querySelector('textarea.code-block-textarea[data-bid="'+bid+'"]');
+    if(el){ el.focus(); if(el.contentEditable==='true') cursorEnd(el); }
+  }, 30);
+  schedSave();
+}
+
+function cursorEnd(el) {
+  var r = document.createRange(), s = window.getSelection();
+  r.selectNodeContents(el); r.collapse(false);
+  s.removeAllRanges(); s.addRange(r);
+}
+
+function schedSave() {
+  clearTimeout(devBlockSaveTimer);
+  devBlockSaveTimer = setTimeout(autoSaveBlocks, 800);
+}
+
+function autoSaveBlocks() {
+  if(!devBlockDevId) return;
+  var d = CACHE.devProjects.find(function(x){ return x.id===devBlockDevId; });
+  if(!d) return;
+  d.blocks = JSON.parse(JSON.stringify(devBlocks));
+  // 마크다운 호환용
+  d.note = devBlocks.map(function(b){
+    if(b.type==='h1') return '# '+b.content;
+    if(b.type==='h2') return '## '+b.content;
+    if(b.type==='h3') return '### '+b.content;
+    if(b.type==='code') return '```'+(b.lang||'')+'\n'+b.content+'\n```';
+    if(b.type==='bullet') return '- '+b.content;
+    if(b.type==='quote') return '> '+b.content;
+    if(b.type==='divider') return '---';
+    return b.content;
+  }).join('\n\n');
+  FB.patch('devProjects/'+devBlockDevId, { blocks: d.blocks, note: d.note });
+  var dot = document.getElementById('block-save-dot');
+  if(dot){ dot.style.opacity='1'; clearTimeout(dot._t); dot._t=setTimeout(function(){ dot.style.opacity='0'; },1200); }
+}
+
+// 슬래시 메뉴
+function showSlashMenu(el, bid) {
+  hideSlashMenu();
+  slashMenuFocusBlockId = bid;
+  slashMenuCursor = 0;
+  var rect = el.getBoundingClientRect();
+  var menu = document.createElement('div');
+  menu.id = 'slash-menu';
+  menu.style.cssText = 'position:fixed;left:'+rect.left+'px;top:'+(rect.bottom+4)+'px;z-index:9999;';
+  menu.className = 'bg-white border border-gray-200 shadow-2xl r20 w-64 overflow-hidden';
+  menu.innerHTML = '<div class="px-4 py-2 bg-gray-50 border-b border-gray-100"><p class="text-[10px] font-black text-gray-400 uppercase tracking-wider">블록 유형</p></div>' +
+    '<div class="py-1">' +
+    SLASH_TYPES.map(function(bt, i){
+      return '<div class="slash-menu-item flex items-center gap-3 px-4 py-2.5 cursor-pointer transition '+(i===0?'bg-indigo-50':'')+'" ' +
+        'data-sidx="'+i+'" onmousedown="selectBlockType(\''+bid+'\',\''+bt.type+'\')">' +
+        '<div class="w-7 h-7 bg-gray-100 r12 flex items-center justify-center text-gray-600 shrink-0"><i class="'+bt.icon+' text-sm"></i></div>' +
+        '<div><p class="text-xs font-bold text-gray-800">'+bt.label+'</p><p class="text-[10px] text-gray-400">'+bt.desc+'</p></div>' +
+      '</div>';
+    }).join('') + '</div>';
+  document.body.appendChild(menu);
+}
+
+function hideSlashMenu() {
+  var m = document.getElementById('slash-menu'); if(m) m.remove();
+  slashMenuCursor = 0;
+}
+
+function moveSlash(dir) {
+  var items = document.querySelectorAll('.slash-menu-item');
+  if(!items.length) return;
+  items[slashMenuCursor].classList.remove('bg-indigo-50');
+  slashMenuCursor = (slashMenuCursor + dir + items.length) % items.length;
+  items[slashMenuCursor].classList.add('bg-indigo-50');
+  items[slashMenuCursor].scrollIntoView({ block:'nearest' });
+}
+
+function pickSlash(bid) {
+  var items = document.querySelectorAll('.slash-menu-item');
+  if(!items.length) return;
+  items[slashMenuCursor].dispatchEvent(new MouseEvent('mousedown'));
+}
+
+function codeKeydown(e, bid, idx) {
+  if(e.key === 'Tab') {
+    e.preventDefault();
+    var ta = e.target, s = ta.selectionStart, en = ta.selectionEnd;
+    ta.value = ta.value.substring(0,s) + '  ' + ta.value.substring(en);
+    ta.selectionStart = ta.selectionEnd = s + 2;
+    updateBlock(bid, ta.value);
+  }
+  if(e.key === 'Escape') {
+    addBlockAt(idx + 1);
+  }
 }
