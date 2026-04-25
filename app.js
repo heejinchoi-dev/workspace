@@ -5,8 +5,8 @@ firebase.initializeApp(firebaseConfig);var auth=firebase.auth(),db=firebase.data
 /*═══════════ Global ═══════════*/
 // 기존 코드: var USER=null,CACHE={tasks:[], ... ,wiki:[],leaveInfo:{total:15,used:0,remain:15}};
 // 아래처럼 변경 (products:[] 추가)
-var USER=null,CACHE={tasks:[],devProjects:[],sprints:[],crm:[],cs:[],schedules:[],approval:[],leaves:[],vault:[],comments:{},members:[],wiki:[],products:[],fixedExpenses:[],leaveInfo:{total:15,used:0,remain:15}};
-var devView='board',confirmCb=null,chartCRM=null,chartTasks=null,activeNoticeId=null;
+var USER=null,CACHE={tasks:[],devProjects:[],sprints:[],crm:[],cs:[],schedules:[],approval:[],leaves:[],vault:[],comments:{},members:[],wiki:[],products:[],fixedExpenses:[],tabPermissions:{},leaveInfo:{total:15,used:0,remain:15}};
+var devView='기획중',confirmCb=null,chartCRM=null,chartTasks=null,activeNoticeId=null;
 var teamTaskViewMode = 'list';
 var isInitialLoad = true;
 /*═══════════ Util ═══════════*/
@@ -190,7 +190,7 @@ function processData(results){
   CACHE.approval=parseNode(results.approvals).filter(function(a){return !a.isDeleted;});
   CACHE.leaves=parseNode(results.leaves).filter(function(l){return !l.isDeleted;});
   CACHE.wiki=parseNode(results.wiki).filter(function(w){return !w.isDeleted;});
-  CACHE.fixedExpenses=parseNode(results.fixedExpenses).filter(function(f){return !f.isDeleted;});
+  CACHE.products=parseNode(results.products).filter(function(p){return !p.isDeleted;});
   CACHE.quickLinks = parseNode(results.quickLinks); 
   CACHE.comments=results.comments||{};
   
@@ -205,7 +205,7 @@ function processData(results){
   var used=0;CACHE.leaves.filter(function(l){return l.applicant&&l.applicant.toLowerCase()===USER.email&&l.status==='승인';}).forEach(function(l){if(l.type==='연차')used+=1;else if(l.type==='반차')used+=0.5;});
   CACHE.leaveInfo={total:USER.leaveTotal,used:used,remain:USER.leaveTotal-used};
   var notices=parseNode(results.notices);if(notices.length>0){var latest=notices[notices.length-1];if(latest&&latest.content){activeNoticeId=latest.id;showNoticePopup(latest.content);}}
-  updateBadges();initConfirmModal();showTab('home');showToast('✅ 로드 완료!');
+  updateBadges();initConfirmModal();applyTabPermissions();showTab('home');showToast('✅ 로드 완료!');
   if(typeof setupRealtimeListeners === 'function') setupRealtimeListeners(); 
 }
 
@@ -217,6 +217,12 @@ function showTab(name){
   // 모바일 사이드바 닫기
   var sb=document.getElementById('sidebar'),ov=document.getElementById('sidebar-overlay');
   if(sb)sb.classList.remove('open');if(ov)ov.classList.remove('show');
+
+ // 권한 체크 (USER와 CACHE 준비된 이후에만)
+  if(USER && CACHE.tabPermissions !== undefined && !canViewTab(name)){
+    showToast("⛔ 이 탭에 대한 접근 권한이 없습니다.");
+    name = 'home';
+  }
 
   // 모든 탭 숨기기
   document.querySelectorAll('[id^="tab-"]').forEach(function(s){s.classList.add('hidden');});
@@ -239,7 +245,7 @@ function showTab(name){
     accounting:renderAccounting,
     teamcal:renderTeamCalendar, // 전사 캘린더
     products:renderProducts,
-    dev:function(){setDevView(devView);},
+    dev:function(){ initDevTab(); renderDevProjects(); },
     crm:filterCRM,
     cs:filterCS,
     approval:renderApproval,
@@ -729,33 +735,379 @@ function deleteScheduleAction(id){
 }
 
 function initDevTab(){
-  var el=document.getElementById('tab-dev');if(el.querySelector('#dev-board-view'))return;
-  el.innerHTML='<div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-3"><div><h1 class="text-2xl md:text-3xl font-black text-gray-800"><i class="ri-macbook-fill text-blue-500 mr-2"></i> 개발 프로젝트</h1><p class="text-sm text-gray-400 mt-1 ml-8" id="dev-project-count"></p></div><div class="flex items-center gap-3 flex-wrap"><label class="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-600 bg-white px-3 py-2 r24 border border-gray-200 shadow-sm hover:bg-blue-50 transition"><input type="checkbox" id="dev-my-filter" onchange="renderDevProjects()" class="w-4 h-4 accent-blue-600"> 내 업무만</label><div class="flex bg-white border border-gray-200 p-1 r24 text-xs font-bold"><button id="dev-view-list" onclick="setDevView(\'list\')" class="px-4 py-2 r20 text-gray-400">리스트</button><button id="dev-view-board" onclick="setDevView(\'board\')" class="px-4 py-2 r20 bg-gray-100 text-gray-800">보드</button></div><select id="dev-status-filter" onchange="renderDevProjects()" class="border border-gray-200 bg-white p-2.5 r24 text-xs font-bold outline-none text-gray-600"><option value="all">전체 상태</option><option>기획중</option><option>개발중</option><option>QA/테스트</option><option>배포완료</option><option>보류</option></select><input type="text" id="dev-search" oninput="renderDevProjects()" placeholder="검색..." class="pl-4 pr-4 py-2.5 border border-gray-200 r24 text-xs outline-none w-36 bg-white"><button onclick="openDevModal()" class="bg-blue-600 text-white px-5 py-2.5 r24 text-sm font-bold shadow-md hover:bg-blue-700 transition">+ 새 프로젝트</button></div></div><div id="dev-list-view" class="flex-1 overflow-y-auto hide-scrollbar hidden"><div id="dev-list-body" class="space-y-1.5"></div></div><div id="dev-board-view" class="flex-1 overflow-x-auto hide-scrollbar" style="min-height:0"><div class="flex gap-4 h-full pb-4 min-w-max">'+['기획중','개발중','QA/테스트','배포완료','보류'].map(function(s){var m=DEV_STATUS_META[s];return'<div class="w-72 flex flex-col"><div class="flex items-center gap-2 mb-3 px-2"><span class="w-2.5 h-2.5 rounded-full '+m.dot+'"></span><span class="text-xs font-black text-gray-600 uppercase tracking-wider">'+s+'</span><span class="text-xs text-gray-400 font-bold ml-auto" id="dev-cnt-'+s+'"></span></div><div class="space-y-3 flex-1 overflow-y-auto hide-scrollbar" id="dev-board-'+s+'"></div></div>';}).join('')+'</div></div>';
+  var el = document.getElementById('tab-dev');
+  if(el.querySelector('#dev-split-layout')) return;
+
+  el.innerHTML = `
+    <div class="flex items-center justify-between mb-4 gap-3 shrink-0">
+      <div class="flex items-center gap-3">
+        <h1 class="text-xl font-black text-gray-900 flex items-center gap-2">
+          <i class="ri-macbook-fill text-indigo-500"></i> 개발 프로젝트
+        </h1>
+        <span id="dev-project-count" class="text-xs font-bold text-gray-400 bg-gray-100 px-3 py-1 r20"></span>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <label class="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-500 bg-white px-3 py-2 r20 border border-gray-200 hover:bg-gray-50 transition">
+          <input type="checkbox" id="dev-my-filter" onchange="renderDevProjects()" class="w-3.5 h-3.5 accent-indigo-600">내 것만
+        </label>
+        <select id="dev-status-filter" onchange="renderDevProjects()" class="border border-gray-200 bg-white p-2 r20 text-xs font-bold outline-none text-gray-600">
+          <option value="all">전체 상태</option>
+          <option>기획중</option><option>개발중</option><option>QA/테스트</option><option>배포완료</option><option>보류</option>
+        </select>
+        <div class="relative">
+          <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+          <input type="text" id="dev-search" oninput="renderDevProjects()" placeholder="검색..." class="pl-8 pr-3 py-2 border border-gray-200 r20 text-xs outline-none w-36 bg-white">
+        </div>
+        <button onclick="openDevModal()" class="bg-indigo-600 text-white px-4 py-2 r20 text-xs font-bold shadow-md hover:bg-indigo-700 transition flex items-center gap-1.5">
+          <i class="ri-add-line"></i> 새 프로젝트
+        </button>
+      </div>
+    </div>
+
+    <div id="dev-split-layout" class="flex gap-0 flex-1 min-h-0 bg-white r24 border border-gray-200 shadow-sm overflow-hidden">
+      <!-- 왼쪽: 칸반 컬럼 -->
+      <div id="dev-kanban-panel" class="w-[380px] shrink-0 border-r border-gray-100 flex flex-col overflow-hidden">
+        <div class="flex border-b border-gray-100">
+          ${['기획중','개발중','QA/테스트','배포완료','보류'].map((s,i) => {
+            const colors = {
+              '기획중':'text-yellow-600 border-yellow-400',
+              '개발중':'text-blue-600 border-blue-400',
+              'QA/테스트':'text-purple-600 border-purple-400',
+              '배포완료':'text-green-600 border-green-400',
+              '보류':'text-gray-500 border-gray-300'
+            };
+            return `<button onclick="setDevStatusFilter('${s}')" id="dev-tab-${i}"
+              class="dev-status-tab flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider transition border-b-2 border-transparent ${s==='기획중'?'border-yellow-400 '+colors[s]:colors[s].split(' ')[0]+' border-transparent'}"
+              data-status="${s}">${s}</button>`;
+          }).join('')}
+        </div>
+        <div id="dev-card-list" class="flex-1 overflow-y-auto hide-scrollbar p-3 space-y-2"></div>
+      </div>
+
+      <!-- 오른쪽: 상세 패널 -->
+      <div id="dev-detail-panel" class="flex-1 overflow-y-auto hide-scrollbar">
+        <div class="flex items-center justify-center h-full text-gray-300">
+          <div class="text-center">
+            <i class="ri-layout-right-2-line text-5xl mb-3 block"></i>
+            <p class="text-sm font-bold">프로젝트를 선택하면<br>상세 내용이 여기에 표시됩니다</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // 첫 번째 탭 활성화
+  devView = '기획중';
 }
-function setDevView(v){devView=v;var lv=document.getElementById('dev-list-view'),bv=document.getElementById('dev-board-view');if(lv)lv.classList.toggle('hidden',v!=='list');if(bv)bv.classList.toggle('hidden',v!=='board');['list','board'].forEach(function(x){var b=document.getElementById('dev-view-'+x);if(b)b.className='px-4 py-2 r20 transition text-xs font-bold '+(x===v?'bg-gray-100 text-gray-800':'text-gray-400');});renderDevProjects();}
+
+var devView = '기획중';
+var devSelectedId = null;
+
+function setDevStatusFilter(status) {
+  devView = status;
+  document.querySelectorAll('.dev-status-tab').forEach(btn => {
+    const s = btn.getAttribute('data-status');
+    const colorMap = {
+      '기획중': 'text-yellow-600 border-yellow-400',
+      '개발중': 'text-blue-600 border-blue-400',
+      'QA/테스트': 'text-purple-600 border-purple-400',
+      '배포완료': 'text-green-600 border-green-400',
+      '보류': 'text-gray-500 border-gray-300'
+    };
+    const [tc, bc] = (colorMap[s]||'text-gray-500 border-gray-300').split(' ');
+    if(s === status) {
+      btn.className = `dev-status-tab flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider transition border-b-2 ${tc} ${bc}`;
+    } else {
+      btn.className = `dev-status-tab flex-1 py-2.5 text-[10px] font-black uppercase tracking-wider transition border-b-2 border-transparent ${tc}`;
+    }
+  });
+  renderDevProjects();
+}
+
+function setDevView(v){ setDevStatusFilter('기획중'); }
+
 function renderDevProjects(){
   initDevTab();
-  var sf=(document.getElementById('dev-status-filter')||{value:'all'}).value;
-  var kw=(document.getElementById('dev-search')||{value:''}).value.toLowerCase();
+  var sf = devView || '기획중';
+  var kw = (document.getElementById('dev-search')||{value:''}).value.toLowerCase();
   var myOnly = document.getElementById('dev-my-filter') && document.getElementById('dev-my-filter').checked;
-  var data=CACHE.devProjects.filter(function(p){
+
+  var data = CACHE.devProjects.filter(function(p){
     var isMy = !myOnly || (p.assignees||'').toLowerCase().indexOf(USER.email.toLowerCase())>-1;
-    return isMy && (sf==='all'||p.status===sf)&&(!kw||(p.title||'').toLowerCase().indexOf(kw)>-1||(p.tags||'').toLowerCase().indexOf(kw)>-1);
-  });
-  var cnt=document.getElementById('dev-project-count');if(cnt)cnt.innerText='총 '+data.length+'개';
-  if(devView==='list')renderDevListView(data);else renderDevBoardView(data);
+    var statusMatch = sf === 'all' || p.status === sf;
+    var kwMatch = !kw || (p.title||'').toLowerCase().indexOf(kw)>-1 || (p.tags||'').toLowerCase().indexOf(kw)>-1;
+    return isMy && statusMatch && kwMatch;
+  }).sort(function(a,b){ return (b.timestamp||0)-(a.timestamp||0); });
+
+  var cnt = document.getElementById('dev-project-count');
+  if(cnt) cnt.innerText = data.length + '건';
+
+  renderDevCardList(data);
 }
-function renderDevListView(data){var el=document.getElementById('dev-list-body');if(!el)return;if(!data.length){el.innerHTML='<div class="text-center py-16 text-gray-400 font-bold text-sm">프로젝트가 없습니다.</div>';return;}el.innerHTML=data.map(function(p){var m=DEV_STATUS_META[p.status]||DEV_STATUS_META['보류'];return'<div onclick="openDevDetail(\''+p.id+'\')" class="group flex flex-col md:flex-row md:items-center gap-3 px-5 py-4 bg-white r24 border border-gray-100 hover:border-blue-300 hover:shadow-md cursor-pointer transition mb-1.5"><div class="flex items-center gap-3 flex-1 min-w-0"><span class="w-2 h-2 rounded-full '+m.dot+' shrink-0"></span><p class="font-black text-gray-800 text-sm truncate group-hover:text-blue-600">'+esc(p.title)+'</p></div><div class="flex items-center gap-3 flex-wrap">'+priorityHtml(p.priority)+'<span class="text-xs px-3 py-1 r20 font-black '+m.badge+'">'+p.status+'</span><div class="flex items-center gap-2"><div class="w-20 progress-bar"><div class="progress-fill" style="width:'+(p.progress||0)+'%"></div></div><span class="text-xs font-black text-blue-600">'+(p.progress||0)+'%</span></div><div class="flex">'+avatarHtml(p.assignees)+'</div></div></div>';}).join('');}
-// ▼ 기존 renderDevBoardView 함수 전체를 지우고 이걸로 덮어쓰세요 ▼
-function renderDevBoardView(data){
-  ['기획중','개발중','QA/테스트','배포완료','보류'].forEach(function(s){
-    var colEl=document.getElementById('dev-board-'+s); var cntEl=document.getElementById('dev-cnt-'+s); if(!colEl)return;
-    var items=data.filter(function(p){return p.status===s;}); if(cntEl)cntEl.innerText=items.length+'건';
-    if(!items.length){colEl.innerHTML='<div class="text-xs text-gray-300 font-bold text-center py-8 border-2 border-dashed border-gray-100 r24">없음</div>';}
-    else {
-      colEl.innerHTML=items.map(function(p){var pm=PRIORITY_META[p.priority]; var tBadge = p.ticketId ? '<span class="text-blue-500 mr-1 text-[10px]">['+p.ticketId+']</span>' : ''; return'<div data-id="'+p.id+'" onclick="openDevDetail(\''+p.id+'\')" class="bg-white border border-gray-100 hover:border-blue-300 p-5 r24 cursor-pointer shadow-sm hover:shadow-md transition group"><div class="flex items-start justify-between mb-2 gap-2"><p class="font-black text-gray-800 text-sm leading-snug group-hover:text-blue-600 flex-1">'+tBadge+esc(p.title)+'</p>'+(pm?'<span class="text-[10px] px-2 py-0.5 r20 font-black shrink-0 '+pm.bg+' '+pm.text+'"><i class="'+pm.icon+'"></i>'+p.priority+'</span>':'')+'</div><div class="flex gap-1 flex-wrap mb-3">'+tagHtml(p.tags)+'</div><div class="progress-bar mb-3"><div class="progress-fill" style="width:'+(p.progress||0)+'%"></div></div><div class="flex justify-between items-center"><div class="flex">'+avatarHtml(p.assignees,3)+'</div></div></div>';}).join('');
-    }
-    new Sortable(colEl, { group: 'dev-projects', animation: 150, onEnd: function(evt) { var newStatus = evt.to.id.replace('dev-board-', ''); var projectId = evt.item.getAttribute('data-id'); if(!projectId) return; var d = CACHE.devProjects.find(function(x){return x.id===projectId;}); if(d) d.status = newStatus; FB.patch('devProjects/'+projectId, {status: newStatus}); showToast("상태가 [" + newStatus + "]로 변경되었습니다."); }});
+
+function renderDevListView(data){ renderDevProjects(); }
+function renderDevBoardView(data){ renderDevProjects(); }
+
+function renderDevCardList(data){
+  var el = document.getElementById('dev-card-list');
+  if(!el) return;
+
+  if(!data.length){
+    el.innerHTML = '<div class="text-center py-12 text-gray-300"><i class="ri-inbox-line text-3xl block mb-2"></i><p class="text-xs font-bold">항목 없음</p></div>';
+    return;
+  }
+
+  const priorityDot = { P1:'bg-red-500', P2:'bg-orange-400', P3:'bg-blue-400', P4:'bg-gray-300' };
+  const statusColor = {
+    '기획중':'bg-yellow-100 text-yellow-700',
+    '개발중':'bg-blue-100 text-blue-700',
+    'QA/테스트':'bg-purple-100 text-purple-700',
+    '배포완료':'bg-green-100 text-green-700',
+    '보류':'bg-gray-100 text-gray-500'
+  };
+
+  el.innerHTML = data.map(p => {
+    const isSelected = p.id === devSelectedId;
+    const cmtCount = Object.values(CACHE.comments||{}).filter(c => c.targetId === p.id).length;
+    const pDot = priorityDot[p.priority] || 'bg-gray-300';
+    const sBadge = statusColor[p.status] || 'bg-gray-100 text-gray-500';
+    const tagList = (p.tags||'').split(',').filter(Boolean).slice(0,2);
+
+    return `
+      <div onclick="openDevDetail('${p.id}')"
+        class="group p-3.5 r20 border cursor-pointer transition-all ${isSelected
+          ? 'bg-indigo-50 border-indigo-300 shadow-sm'
+          : 'bg-white border-gray-100 hover:border-indigo-200 hover:bg-gray-50/50'}"
+        data-dev-id="${p.id}">
+
+        <!-- 상단: 티켓ID + 우선순위 -->
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full ${pDot} shrink-0"></span>
+            <span class="text-[10px] font-black text-gray-400 uppercase tracking-wider">${p.ticketId||''}</span>
+          </div>
+          <span class="text-[9px] font-black px-2 py-0.5 r20 ${sBadge}">${p.status}</span>
+        </div>
+
+        <!-- 제목 -->
+        <p class="text-sm font-bold text-gray-800 leading-snug mb-2.5 group-hover:text-indigo-700 transition ${isSelected?'text-indigo-700':''}">${esc(p.title)}</p>
+
+        <!-- 태그 -->
+        ${tagList.length ? `<div class="flex gap-1 flex-wrap mb-2.5">${tagList.map(t => `<span class="text-[9px] font-bold px-2 py-0.5 r20 ${tagColor(t.trim())}">${esc(t.trim())}</span>`).join('')}</div>` : ''}
+
+        <!-- 하단: 담당자 + 댓글 + 진행률 -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1.5">
+            <div class="flex">${avatarHtml(p.assignees,3)}</div>
+            ${p.deadline ? `<span class="text-[9px] text-gray-400 font-medium ml-1"><i class="ri-calendar-line"></i> ${p.deadline}</span>` : ''}
+          </div>
+          <div class="flex items-center gap-2 text-[10px] text-gray-400">
+            ${cmtCount ? `<span><i class="ri-chat-3-line"></i> ${cmtCount}</span>` : ''}
+            <span class="font-bold text-indigo-500">${p.progress||0}%</span>
+          </div>
+        </div>
+
+        <!-- 진행률 바 -->
+        <div class="mt-2.5 progress-bar" style="height:3px">
+          <div class="progress-fill" style="width:${p.progress||0}%"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openDevDetail(id){
+  var d = CACHE.devProjects.find(x => String(x.id)===String(id));
+  if(!d) return;
+  if(!d.images) d.images = [];
+
+  devSelectedId = id;
+  // 카드 선택 상태 업데이트
+  document.querySelectorAll('[data-dev-id]').forEach(el => {
+    const isSelected = el.getAttribute('data-dev-id') === id;
+    el.className = el.className.replace(
+      /bg-indigo-50 border-indigo-300 shadow-sm|bg-white border-gray-100 hover:border-indigo-200 hover:bg-gray-50\/50/g, ''
+    );
+    el.className += isSelected
+      ? ' bg-indigo-50 border-indigo-300 shadow-sm'
+      : ' bg-white border-gray-100 hover:border-indigo-200 hover:bg-gray-50/50';
+    el.querySelector('p')?.classList.toggle('text-indigo-700', isSelected);
+  });
+
+  var cList = Object.keys(CACHE.comments||{}).map(k=>CACHE.comments[k])
+    .filter(c=>c.targetId===id)
+    .sort((a,b)=>new Date(a.date)-new Date(b.date));
+
+  var noteHtml = '';
+  if(!d.note||d.note.trim()==='') {
+    noteHtml = '<p class="text-gray-400 text-sm italic">내용 없음 — 수정 버튼을 눌러 작성하세요.</p>';
+  } else if(d.note.startsWith('<')) {
+    noteHtml = d.note;
+  } else {
+    noteHtml = marked.parse(d.note);
+  }
+
+  const statusColor = {
+    '기획중':'bg-yellow-100 text-yellow-700 border-yellow-200',
+    '개발중':'bg-blue-100 text-blue-700 border-blue-200',
+    'QA/테스트':'bg-purple-100 text-purple-700 border-purple-200',
+    '배포완료':'bg-green-100 text-green-700 border-green-200',
+    '보류':'bg-gray-100 text-gray-500 border-gray-200'
+  };
+  const sc = statusColor[d.status]||'bg-gray-100 text-gray-500 border-gray-200';
+  const pm = PRIORITY_META[d.priority];
+
+  var panel = document.getElementById('dev-detail-panel');
+  if(!panel) return;
+
+  panel.innerHTML = `
+    <div class="flex flex-col h-full">
+      <!-- 헤더 -->
+      <div class="px-8 pt-7 pb-4 border-b border-gray-100 shrink-0">
+        <div class="flex items-start justify-between gap-4 mb-4">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">${d.ticketId||''}</span>
+              ${pm ? `<span class="text-[10px] px-2 py-0.5 r20 font-black flex items-center gap-1 ${pm.bg} ${pm.text}"><i class="${pm.icon}"></i>${d.priority}</span>` : ''}
+            </div>
+            <h1 class="text-2xl font-black text-gray-900 leading-tight">${esc(d.title)}</h1>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button onclick="closeModal('dev-detail-modal');openDevModal(CACHE.devProjects.find(x=>x.id==='${d.id}'))"
+              class="px-4 py-2 bg-gray-100 hover:bg-gray-200 r20 text-xs font-bold transition flex items-center gap-1.5">
+              <i class="ri-edit-line"></i> 수정
+            </button>
+            <button onclick="confirmDeleteDev2('${d.id}')"
+              class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 r20 text-xs font-bold transition">
+              <i class="ri-delete-bin-line"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- 메타 정보 행 -->
+        <div class="flex flex-wrap gap-6 text-xs">
+          <div>
+            <p class="text-gray-400 font-bold mb-1 uppercase tracking-wider text-[10px]">상태</p>
+            <span class="px-3 py-1 r20 font-bold border text-xs ${sc}">${d.status}</span>
+          </div>
+          <div>
+            <p class="text-gray-400 font-bold mb-1 uppercase tracking-wider text-[10px]">담당자</p>
+            <div class="flex items-center gap-1.5">${avatarHtml(d.assignees,6)}
+              <span class="text-gray-600 font-medium">${(d.assignees||'').split(',').filter(Boolean).map(e=>getMemberName(e.trim())).join(', ')||'없음'}</span>
+            </div>
+          </div>
+          ${d.deadline ? `<div>
+            <p class="text-gray-400 font-bold mb-1 uppercase tracking-wider text-[10px]">마감일</p>
+            <span class="text-gray-700 font-bold"><i class="ri-calendar-line text-gray-400 mr-1"></i>${d.deadline}</span>
+          </div>` : ''}
+          <div>
+            <p class="text-gray-400 font-bold mb-1 uppercase tracking-wider text-[10px]">진행률</p>
+            <div class="flex items-center gap-2">
+              <div class="w-20 progress-bar"><div id="dev-detail-progress-fill" class="progress-fill" style="width:${d.progress||0}%"></div></div>
+              <span id="dev-detail-progress-text" class="font-black text-indigo-600">${d.progress||0}%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 태그 -->
+        ${d.tags ? `<div class="flex gap-1 flex-wrap mt-3">${tagHtml(d.tags)}</div>` : ''}
+      </div>
+
+      <!-- 본문 (2컬럼) -->
+      <div class="flex flex-1 min-h-0 overflow-hidden">
+
+        <!-- 왼쪽: 내용 + 세부업무 + 이미지 -->
+        <div class="flex-1 overflow-y-auto hide-scrollbar px-8 py-6">
+
+          <!-- 세부 업무 체크리스트 -->
+          <div class="mb-6">
+            <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <i class="ri-checkbox-multiple-line text-indigo-400"></i> 세부 업무
+            </h3>
+            <div id="dev-task-list" class="space-y-1.5 mb-3 max-h-48 overflow-y-auto hide-scrollbar"></div>
+            <div class="flex gap-2">
+              <input type="text" id="dev-task-cat" placeholder="분류" class="w-20 border p-2 r16 text-xs outline-none bg-gray-50 focus:border-indigo-400">
+              <input type="text" id="dev-task-text" placeholder="업무 내용..." class="flex-1 border p-2 r16 text-xs outline-none bg-gray-50 focus:border-indigo-400" onkeypress="if(event.key==='Enter')addDevProjectTask('${d.id}')">
+              <input type="date" id="dev-task-deadline" class="w-28 border p-2 r16 text-xs outline-none bg-gray-50">
+              <button onclick="addDevProjectTask('${d.id}')" class="bg-indigo-600 text-white px-3 py-2 r16 text-xs font-bold hover:bg-indigo-700">추가</button>
+            </div>
+          </div>
+
+          <!-- 상세 설명 -->
+          <div class="mb-6">
+            <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <i class="ri-file-text-line text-indigo-400"></i> 상세 설명
+            </h3>
+            <div class="prose prose-sm max-w-none bg-gray-50/50 p-5 r16 border border-gray-100">${noteHtml}</div>
+          </div>
+
+          <!-- 첨부 이미지 -->
+          <div class="mb-6">
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <i class="ri-image-line text-indigo-400"></i> 첨부 이미지
+              </h3>
+              <label class="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 r16 text-[10px] font-bold transition">
+                + 사진<input type="file" class="hidden" accept="image/*" onchange="handleDevImage(this,'${d.id}')">
+              </label>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              ${d.images.length===0
+                ? '<p class="text-[10px] text-gray-400 col-span-3">없음</p>'
+                : d.images.map(img=>`<a href="${img}" target="_blank" class="block aspect-video bg-gray-100 r12 overflow-hidden border border-gray-100 hover:border-indigo-300 transition"><img src="${img}" class="w-full h-full object-cover"></a>`).join('')}
+            </div>
+          </div>
+        </div>
+
+        <!-- 오른쪽: 댓글 -->
+        <div class="w-80 shrink-0 border-l border-gray-100 flex flex-col overflow-hidden">
+          <div class="px-5 py-4 border-b border-gray-100">
+            <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider flex items-center gap-2">
+              <i class="ri-chat-3-line text-indigo-400"></i> 댓글 <span class="text-gray-400 font-bold">${cList.length}</span>
+            </h3>
+          </div>
+          <div id="dev-cmt-list" class="flex-1 overflow-y-auto hide-scrollbar p-4 space-y-3">
+            ${cList.length ? cList.map(c => {
+              const ctext = esc(c.content).replace(/@([^\s]+)/g,'<span class="text-indigo-600 font-bold bg-indigo-50 px-1 r5">@$1</span>');
+              return `<div class="group">
+                <div class="flex items-center gap-2 mb-1">
+                  <div class="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-white text-[9px] font-black">${(c.authorName||'?')[0]}</div>
+                  <span class="text-[10px] font-black text-gray-700">${c.authorName}</span>
+                  <span class="text-[9px] text-gray-400 ml-auto">${c.date}</span>
+                </div>
+                <div class="ml-7 bg-gray-50 p-2.5 r12 text-xs text-gray-600 leading-relaxed border border-gray-100">${ctext}</div>
+              </div>`;
+            }).join('') : '<p class="text-xs text-gray-300 text-center py-8 font-bold">댓글이 없습니다</p>'}
+          </div>
+          <div class="p-4 border-t border-gray-100 shrink-0">
+            <div class="relative">
+              <textarea id="dev-cmt-in" rows="3" placeholder="@이름 멘션, 댓글 입력..."
+                class="w-full border border-gray-200 p-3 pr-10 r16 text-xs outline-none resize-none focus:border-indigo-400 bg-white"></textarea>
+              <button onclick="submitDevComment('${d.id}')"
+                class="absolute bottom-3 right-3 bg-indigo-600 text-white w-7 h-7 rounded-full flex items-center justify-center hover:bg-indigo-700 transition">
+                <i class="ri-send-plane-fill text-xs"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  renderDevProjectTasks(d.id);
+  var cl = document.getElementById('dev-cmt-list');
+  if(cl) cl.scrollTop = cl.scrollHeight;
+}
+
+function confirmDeleteDev2(id){
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
+  openCustomConfirm("프로젝트 삭제","정말 삭제하시겠습니까?",function(){
+    CACHE.devProjects = CACHE.devProjects.filter(x=>x.id!==id);
+    devSelectedId = null;
+    var panel = document.getElementById('dev-detail-panel');
+    if(panel) panel.innerHTML = `<div class="flex items-center justify-center h-full text-gray-300"><div class="text-center"><i class="ri-layout-right-2-line text-5xl mb-3 block"></i><p class="text-sm font-bold">프로젝트를 선택하면<br>상세 내용이 여기에 표시됩니다</p></div></div>`;
+    renderDevProjects();
+    FB.patch('devProjects/'+id,{isDeleted:true,deletedAt:nowFmt(),deletedBy:USER.name});
+    showToast("삭제 완료");
   });
 }
 
@@ -845,35 +1197,7 @@ function deleteDevProjectTask(id, idx){
   updateDevProgress(id); // 🌟 진행률 업데이트
 }
 
-// 2-3. 상세 모달창 열 때 HTML에 id 부여 (진행률 애니메이션 용도)
-function openDevDetail(id){
-  var d=CACHE.devProjects.find(function(x){return String(x.id)===String(id);});if(!d)return;
-  if(!d.images) d.images = [];
-  var cList=Object.keys(CACHE.comments||{}).map(function(k){return CACHE.comments[k];}).filter(function(c){return c.targetId===id;}).sort(function(a,b){return new Date(a.date)-new Date(b.date);});
-  var tBadge = d.ticketId ? '<span class="text-blue-600 mr-2 text-sm bg-blue-100 px-2 py-1 r20 font-black">['+d.ticketId+']</span>' : '';
-  // 마크다운이면 파싱, HTML이면 그대로 표시
-  var noteHtml = '';
-    if(!d.note || d.note.trim() === '') {
-     noteHtml = '<p class="text-gray-400 text-sm">내용 없음</p>';
-    } else if(d.note.startsWith('<')) {
-  // 기존 Quill HTML 데이터 호환
-     noteHtml = d.note;
-    } else {
-  // 마크다운 렌더링
-     noteHtml = marked.parse(d.note);
-     }
 
-  var leftHtml = '<div class="flex-1 p-8 md:p-10 overflow-y-auto"><div class="flex items-center gap-2 mb-2">'+tBadge+priorityHtml(d.priority,'md')+'</div><h2 class="text-xl md:text-3xl font-black text-gray-900 mb-4 pr-10">'+esc(d.title)+'</h2><div class="flex gap-2 flex-wrap mb-4">'+tagHtml(d.tags)+'<span class="text-xs px-3 py-1 r20 font-black '+(DEV_STATUS_META[d.status]||DEV_STATUS_META['보류']).badge+'">'+d.status+'</span>'+(d.deadline?'<span class="text-xs px-3 py-1 r20 font-black bg-red-50 text-red-600"><i class="ri-calendar-line"></i> 마감: '+d.deadline+'</span>':'')+'</div>' + 
-  // 🌟 게이지 바에 ID 부여
-  '<div class="grid grid-cols-1 gap-4 mb-6 bg-gray-50 p-5 r24 text-sm"><div><span class="text-gray-400 text-xs font-bold">진행률 (자동계산)</span><div class="flex items-center gap-2 mt-1"><div class="flex-1 progress-bar"><div id="dev-detail-progress-fill" class="progress-fill transition-all duration-500" style="width:'+(d.progress||0)+'%"></div></div><span id="dev-detail-progress-text" class="text-sm font-black text-blue-600">'+(d.progress||0)+'%</span></div></div><div><span class="text-gray-400 text-xs font-bold">담당자</span><div class="flex gap-1 mt-1">'+avatarHtml(d.assignees,8)+'</div></div></div><div class="mb-6 border-t border-gray-100 pt-5"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2 mb-3"><i class="ri-list-check-2 text-blue-500"></i> 카테고리별 세부 업무</h3><div id="dev-task-list" class="space-y-3 mb-4 max-h-[300px] overflow-y-auto hide-scrollbar"></div><div class="flex gap-2 bg-gray-50 p-3 r20"><input type="text" id="dev-task-cat" placeholder="분류(예: 기획)" class="w-1/4 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="text" id="dev-task-text" placeholder="업무 내용 입력" class="flex-1 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><input type="date" id="dev-task-deadline" class="w-32 border p-2 r20 text-xs outline-none bg-white focus:border-blue-400"><button onclick="addDevProjectTask(\''+d.id+'\')" class="bg-blue-600 text-white px-4 py-2 r20 text-xs font-bold hover:bg-blue-700 shadow-sm">추가</button></div></div><div class="bg-white border border-gray-200 p-5 r24 mb-6"><p class="text-xs font-black text-blue-500 mb-4 border-b pb-2">상세 설명 (에디터)</p><div class="prose prose-sm max-w-none text-gray-700 leading-relaxed">'+noteHtml+'</div></div>' + 
-  '<div class="mb-8 border-t pt-6"><div class="flex justify-between items-center mb-4"><h3 class="text-sm font-black text-gray-800 flex items-center gap-2"><i class="ri-image-add-fill text-blue-500"></i> 첨부 이미지</h3><label class="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 r20 text-xs font-bold transition">+ 사진 올리기<input type="file" class="hidden" accept="image/*" onchange="handleDevImage(this, \''+d.id+'\')"></label></div><div class="grid grid-cols-2 md:grid-cols-3 gap-3">' + (d.images.length===0 ? '<p class="text-xs text-gray-400 col-span-3 py-4">첨부된 사진이 없습니다.</p>' : d.images.map(img => `<a href="${img}" target="_blank" class="block aspect-video bg-gray-100 r20 overflow-hidden border border-gray-200 hover:border-blue-400 transition"><img src="${img}" class="w-full h-full object-cover object-center"></a>`).join('')) + '</div></div>' +
-  '<div class="flex justify-end gap-3"><button onclick="closeModal(\'dev-detail-modal\');openDevModal(CACHE.devProjects.find(function(x){return x.id===\''+d.id+'\';}))" class="px-6 py-3 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">수정</button><button onclick="confirmDeleteDev2(\''+d.id+'\')" class="px-6 py-3 bg-red-50 text-red-600 r35 text-sm font-bold hover:bg-red-100 transition">삭제</button></div></div>';
-  
-  var rightHtml = '<div class="w-full md:w-[360px] bg-gray-50 border-l p-8 flex flex-col h-[600px] md:h-auto"><h3 class="font-black text-lg mb-4 text-gray-800"><i class="ri-chat-3-fill text-blue-500 mr-2"></i>업무 코멘트 / 멘션</h3><div id="dev-cmt-list" class="flex-1 overflow-y-auto space-y-3 hide-scrollbar mb-4">'+(cList.length?cList.map(function(c){var ctext = esc(c.content).replace(/@([^\s]+)/g, '<span class="text-blue-600 font-bold bg-blue-100 px-1 r20">@$1</span>');return'<div class="bg-white p-4 r20 shadow-sm border border-gray-100"><div class="flex justify-between items-center mb-1"><span class="font-black text-xs text-gray-800">'+c.authorName+'</span><span class="text-[10px] text-gray-400">'+c.date+'</span></div><p class="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">'+ctext+'</p></div>';}).join(''):'<p class="text-xs text-gray-400 text-center py-10">댓글이 없습니다.<br>@이름 으로 팀원을 호출해 보세요.</p>')+'</div><div class="relative"><textarea id="dev-cmt-in" rows="3" placeholder="@이름 으로 멘션, 내용 입력..." class="w-full border p-4 pr-12 r20 text-sm outline-none resize-none focus:border-blue-400 shadow-sm bg-white"></textarea><button onclick="submitDevComment(\''+d.id+'\')" class="absolute bottom-4 right-4 bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-blue-700 transition"><i class="ri-send-plane-fill text-sm"></i></button></div></div>';
-
-  renderModalRoot('dev-detail-modal','<div class="bg-white r35 modal-content max-w-6xl p-0 shadow-2xl relative fade-in flex flex-col md:flex-row overflow-hidden"><button onclick="closeModal(\'dev-detail-modal\')" class="absolute top-6 right-6 text-gray-400 hover:text-black z-10"><i class="ri-close-line text-3xl"></i></button>'+leftHtml+rightHtml+'</div>');
-  openModal('dev-detail-modal'); renderDevProjectTasks(d.id); var cl=document.getElementById('dev-cmt-list');if(cl)cl.scrollTop=cl.scrollHeight;
-}
 
 // 2. 개발 프로젝트 삭제 변경
 function confirmDeleteDev2(id){
@@ -2148,6 +2472,31 @@ function renderAdmin(){
   '<div class="bg-white border-2 border-red-50 p-8 md:p-10 r35 card-shadow"><h2 class="text-xl font-bold text-red-600 mb-5"><i class="ri-megaphone-fill"></i> 팝업 공지</h2><textarea id="admin-notice-content" rows="4" placeholder="공지 내용" class="w-full border p-4 r24 mb-4 outline-none text-sm bg-gray-50"></textarea><button onclick="submitNoticeAdmin()" class="bg-red-600 text-white px-6 py-3 r35 font-bold w-full shadow-lg">전사 팝업 띄우기</button></div>'+
   '<div class="bg-white border p-8 md:p-10 r35 card-shadow"><h2 class="text-xl font-bold text-gray-800 mb-5"><i class="ri-database-2-fill text-blue-600"></i> 데이터 다운로드</h2><select id="admin-export-month" class="w-full border p-4 r24 mb-4 outline-none text-sm font-bold bg-gray-50"></select><div class="flex gap-3 mb-3"><button onclick="downloadCSVAdmin(\'Approval\')" class="flex-1 bg-gray-800 text-white py-3 r35 text-sm font-bold shadow-md">지출내역</button><button onclick="downloadCSVAdmin(\'Leaves\')" class="flex-1 bg-gray-800 text-white py-3 r35 text-sm font-bold shadow-md">휴가내역</button></div><button onclick="downloadDeletedData()" class="w-full bg-red-100 text-red-700 hover:bg-red-200 transition py-3 r35 text-sm font-bold shadow-sm"><i class="ri-delete-bin-fill mr-1"></i> 삭제된 전체 기록 다운로드</button></div>'+
   '</div>'+
+  '<div class="bg-white border p-8 md:p-10 r35 card-shadow mb-8"><h2 class="text-xl font-bold text-gray-800 mb-2"><i class="ri-shield-user-fill text-indigo-500"></i> 탭 접근 권한 관리</h2>'+
+    '<p class="text-xs text-gray-400 mb-5">지정된 인원만 해당 탭을 볼 수 있습니다.</p>'+
+    '<div class="space-y-4">'+
+  ['approval','accounting'].map(function(tab){
+    var labels = { approval:'지출/결재', accounting:'고정 지출 관리' };
+    var icons  = { approval:'ri-bank-card-fill text-blue-500', accounting:'ri-calculator-fill text-cyan-500' };
+    var current = ((CACHE.tabPermissions||{})[tab]||{emails:''}).emails || ''; 
+    return '<div class="p-5 bg-gray-50 r24 border border-gray-100">'+
+      '<div class="flex items-center gap-2 mb-3">'+
+        '<i class="'+icons[tab]+' text-lg"></i>'+
+        '<span class="font-black text-sm text-gray-800">'+labels[tab]+'</span>'+
+      '</div>'+
+      '<p class="text-[10px] text-gray-400 mb-2 font-bold">접근 허용 이메일 (쉼표로 구분)</p>'+
+      '<div class="flex gap-2">'+
+        '<input type="text" id="tab-perm-'+tab+'" value="'+esc(current)+'" placeholder="예: hong@circularlabs.co.kr, kim@circularlabs.co.kr" class="flex-1 border p-3 r20 text-xs outline-none bg-white focus:border-indigo-400">'+
+        '<button onclick="saveTabPermission(\''+tab+'\')" class="bg-indigo-600 text-white px-5 py-2.5 r20 text-xs font-bold hover:bg-indigo-700 transition shadow-sm">저장</button>'+
+      '</div>'+
+      '<div class="flex flex-wrap gap-1.5 mt-2" id="tab-perm-preview-'+tab+'">'+
+        current.split(',').filter(Boolean).map(function(e){
+          return '<span class="text-[10px] bg-indigo-50 text-indigo-600 px-2.5 py-1 r20 font-bold border border-indigo-100">'+getMemberName(e.trim())+'</span>';
+        }).join('')+
+      '</div>'+
+    '</div>';
+  }).join('')+
+'</div></div>'+
   '<div class="bg-white border p-8 md:p-10 r35 card-shadow"><h2 class="text-xl font-bold text-gray-800 mb-5"><i class="ri-user-settings-fill text-teal-600"></i> 멤버 직급 관리 (팀장/팀원)</h2><p class="text-xs text-gray-500 mb-4">팀장으로 지정된 멤버는 해당 팀의 1차 결재권자로 자동 설정됩니다.</p><div id="admin-member-list" class="space-y-3 max-h-[400px] overflow-y-auto hide-scrollbar"></div></div>';
   initMonthFilters();
   renderAdminMemberList();
@@ -2743,8 +3092,7 @@ function initApp(){
   
   // 🌟 실시간 리스너 실행 (이게 있어야 데이터가 즉시 반영됩니다)
   if(typeof listenRealtimeTasks === 'function') listenRealtimeTasks(); 
-
-  var nodes=['tasks','devProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices','quickLinks','products','fixedExpenses'];
+  var nodes=['tasks','devProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices','quickLinks','products','fixedExpenses','tabPermissions']; 
   var results={}, idx=0;
   
   function next(){
@@ -3310,7 +3658,36 @@ function sendNativeNotification(title, body) {
   if (Notification.permission === "granted") { new Notification(title, { body: body, icon: 'https://i.imgur.com/gzXQ8nD.png' }); }
   else if (Notification.permission !== "denied") { Notification.requestPermission().then(p => { if (p === "granted") new Notification(title, { body: body, icon: 'https://i.imgur.com/gzXQ8nD.png' }); }); }
 }
-/*═══════════ [THE END] ═══════════*/
+
+
+/*═══════════ 탭 권한 관리 ═══════════*/
+function canViewTab(tabName) {
+  if(!USER) return false;
+  if(USER.role === 'ADMIN') return true;
+  if(!CACHE.tabPermissions) return tabName !== 'approval' && tabName !== 'accounting';
+
+  // 제한 탭 목록
+  var restrictedTabs = ['approval', 'accounting'];
+  if(restrictedTabs.indexOf(tabName) === -1) return true;
+
+  // 허용된 이메일 목록 확인
+  var perms = CACHE.tabPermissions[tabName];
+  if(!perms) return false; // 설정이 없으면 ADMIN만 접근
+
+  var allowedEmails = (perms.emails || '').toLowerCase().split(',').map(function(e){ return e.trim(); });
+  return allowedEmails.indexOf(USER.email.toLowerCase()) > -1;
+}
+
+function applyTabPermissions() {
+  // 사이드바 탭 숨김/표시
+  var restrictedTabs = ['approval', 'accounting'];
+  restrictedTabs.forEach(function(tab) {
+    var sidebarItem = document.querySelector('[data-tab="'+tab+'"]');
+    if(sidebarItem) {
+      sidebarItem.style.display = canViewTab(tab) ? '' : 'none';
+    }
+  });
+}
 
 function markNotifAsRead(notifId, action) {
   var readNotifs = JSON.parse(localStorage.getItem('read_notifs_' + USER.email)) || [];
@@ -3319,6 +3696,29 @@ function markNotifAsRead(notifId, action) {
   closeModal('notif-modal');
   refreshNotifBadge();
   if (typeof action === 'function') action(); // 해당 탭/모달로 이동
+}
+
+function saveTabPermission(tab) {
+  var input = document.getElementById('tab-perm-'+tab);
+  if(!input) return;
+
+  var emails = input.value.trim();
+  if(!CACHE.tabPermissions) CACHE.tabPermissions = {};
+  CACHE.tabPermissions[tab] = { emails: emails };
+
+  FB.set('tabPermissions/'+tab, { emails: emails });
+
+  // 미리보기 업데이트
+  var preview = document.getElementById('tab-perm-preview-'+tab);
+  if(preview) {
+    preview.innerHTML = emails.split(',').filter(Boolean).map(function(e){
+      return '<span class="text-[10px] bg-indigo-50 text-indigo-600 px-2.5 py-1 r20 font-bold border border-indigo-100">'+getMemberName(e.trim())+'</span>';
+    }).join('');
+  }
+
+  // 사이드바 즉시 반영
+  applyTabPermissions();
+  showToast('✅ 권한이 저장되었습니다.');
 }
 
 /*═══════════ 고정 지출 관리 ═══════════*/
