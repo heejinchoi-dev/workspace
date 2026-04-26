@@ -3808,7 +3808,7 @@ function canViewTab(tabName) {
   if(!USER) return false;
   if(USER.role === 'ADMIN') return true;
 
-  var restrictedTabs = ['approval', 'accounting'];
+  var restrictedTabs = ['accounting'];
   if(restrictedTabs.indexOf(tabName) === -1) return true;
 
   // tabPermissions 자체가 없거나, 해당 탭 설정이 없으면 전체 공개
