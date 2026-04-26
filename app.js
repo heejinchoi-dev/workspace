@@ -1027,12 +1027,10 @@ function openDevDetail(id){
             <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
               <i class="ri-checkbox-multiple-line text-indigo-400"></i> 세부 업무
             </h3>
-            <div id="dev-task-list" class="space-y-1.5 mb-3 max-h-48 overflow-y-auto hide-scrollbar"></div>
-            <div class="flex gap-2">
-              <input type="text" id="dev-task-cat" placeholder="분류" class="w-20 border p-2 r16 text-xs outline-none bg-gray-50 focus:border-indigo-400">
-              <input type="text" id="dev-task-text" placeholder="업무 내용..." class="flex-1 border p-2 r16 text-xs outline-none bg-gray-50 focus:border-indigo-400" onkeypress="if(event.key==='Enter')addDevProjectTask('${d.id}')">
-              <input type="date" id="dev-task-deadline" class="w-28 border p-2 r16 text-xs outline-none bg-gray-50">
-              <button onclick="addDevProjectTask('${d.id}')" class="bg-indigo-600 text-white px-3 py-2 r16 text-xs font-bold hover:bg-indigo-700">추가</button>
+            <div id="dev-task-list" class="space-y-0.5 mb-2 max-h-64 overflow-y-auto hide-scrollbar"></div>
+            <div onclick="addInlineDevTask('${d.id}')"
+              class="flex items-center gap-2 px-3 py-2 text-gray-300 hover:text-indigo-400 hover:bg-indigo-50/50 r16 cursor-pointer transition text-xs font-bold">
+              <i class="ri-add-line text-sm"></i> 업무 추가
             </div>
           </div>
 
@@ -1145,30 +1143,142 @@ function submitDevComment(id){
   FB.set('comments/'+cId,c);
   openDevDetail(id); // 화면 새로고침
 }
-// (추가) 개발 프로젝트 세부 업무 로직
-function renderDevProjectTasks(id){
-  var d=CACHE.devProjects.find(function(x){return String(x.id)===String(id);});if(!d)return;
-  var el=document.getElementById('dev-task-list');if(!el)return;
-  if(!d.tasks || !d.tasks.length){el.innerHTML='<p class="text-xs text-gray-400 text-center py-4 font-bold">등록된 세부 업무가 없습니다.</p>';return;}
 
-  var groups={};
+function renderDevProjectTasks(id){
+  var d = CACHE.devProjects.find(function(x){ return String(x.id)===String(id); });
+  if(!d) return;
+  var el = document.getElementById('dev-task-list');
+  if(!el) return;
+
+  if(!d.tasks || !d.tasks.length){
+    el.innerHTML = '<p class="text-xs text-gray-300 px-3 py-2">아직 세부 업무가 없습니다.</p>';
+    return;
+  }
+
+  // 카테고리별 그룹
+  var groups = {};
   d.tasks.forEach(function(t, i){
-    var cat=t.category||'기본';
-    if(!groups[cat]) groups[cat]=[];
-    t.originalIndex=i;
+    var cat = t.category || '기본';
+    if(!groups[cat]) groups[cat] = [];
+    t.originalIndex = i;
     groups[cat].push(t);
   });
 
-  var html='';
+  var html = '';
   Object.keys(groups).sort().forEach(function(cat){
-    html+='<div class="mb-3"><h4 class="text-[10px] font-black text-gray-500 uppercase tracking-wider mb-2 px-2 bg-gray-100 inline-block rounded-full py-1">'+esc(cat)+'</h4>';
-    var catTasks=groups[cat].sort(function(a,b){return (a.deadline||'9999-99-99').localeCompare(b.deadline||'9999-99-99');});
-    catTasks.forEach(function(t){
-      html+='<div class="flex items-center gap-3 p-2.5 '+(t.done?'bg-gray-50':'')+' r20 group transition border-b border-gray-50 last:border-0"><input type="checkbox" class="w-4 h-4 rounded accent-blue-600 cursor-pointer shrink-0" '+(t.done?'checked':'')+' onchange="toggleDevProjectTask(\''+id+'\','+t.originalIndex+',this.checked)"><div class="flex-1 min-w-0"><p class="text-xs '+(t.done?'line-through text-gray-400':'font-bold text-gray-700')+'">'+esc(t.text)+'</p></div>'+(t.deadline?'<span class="text-[10px] '+(t.done?'bg-gray-200 text-gray-400':'bg-red-50 text-red-600')+' px-2 py-0.5 r20 font-bold shrink-0"><i class="ri-calendar-event-line"></i> '+t.deadline+'</span>':'')+'<button onclick="deleteDevProjectTask(\''+id+'\','+t.originalIndex+')" class="opacity-0 group-hover:opacity-100 text-red-300 hover:text-red-500 transition ml-2"><i class="ri-delete-bin-line text-sm"></i></button></div>';
+    html += '<div class="mb-1">' +
+      '<div class="text-[10px] font-black text-gray-400 uppercase tracking-wider px-3 py-1 flex items-center gap-1">' +
+        '<i class="ri-folder-2-line text-gray-300"></i>' +
+        '<span contenteditable="true" onblur="renameCat(\''+id+'\',\''+escBlock(cat)+'\',this.innerText.trim())" ' +
+          'class="outline-none hover:text-indigo-400 cursor-text">'+escBlock(cat)+'</span>' +
+      '</div>';
+
+    groups[cat].forEach(function(t){
+      var idx = t.originalIndex;
+      var isDone = !!t.done;
+      html += '<div class="flex items-center gap-2 px-3 py-1.5 group hover:bg-gray-50 r16 transition" data-devtask="'+id+'-'+idx+'">' +
+        '<input type="checkbox" class="w-4 h-4 rounded accent-indigo-600 cursor-pointer shrink-0" ' +
+          (isDone?'checked':'') + ' onchange="toggleDevProjectTask(\''+id+'\','+idx+',this.checked)">' +
+        '<span contenteditable="true" ' +
+          'class="flex-1 text-xs outline-none '+(isDone?'line-through text-gray-400':'text-gray-700 font-medium')+' ' +
+          'hover:bg-indigo-50/50 focus:bg-indigo-50/50 px-1 r8 transition min-w-0" ' +
+          'onblur="inlineSaveTaskText(\''+id+'\','+idx+',this.innerText.trim())" ' +
+          'onkeydown="inlineTaskKeydown(event,\''+id+'\','+idx+')">' +
+          escBlock(t.text) +
+        '</span>' +
+        (t.deadline
+          ? '<input type="date" value="'+t.deadline+'" ' +
+              'onchange="inlineSaveTaskDate(\''+id+'\','+idx+',this.value)" ' +
+              'class="text-[10px] text-gray-400 border-0 outline-none bg-transparent cursor-pointer ' +
+              'opacity-0 group-hover:opacity-100 focus:opacity-100 transition w-28">'
+          : '<button onmousedown="addDeadlineToTask(\''+id+'\','+idx+')" ' +
+              'class="text-[10px] text-gray-300 hover:text-indigo-400 opacity-0 group-hover:opacity-100 ' +
+              'transition flex items-center gap-1 shrink-0">' +
+              '<i class="ri-calendar-line"></i>' +
+            '</button>') +
+        '<button onclick="deleteDevProjectTask(\''+id+'\','+idx+')" ' +
+          'class="text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition shrink-0">' +
+          '<i class="ri-close-line text-sm"></i>' +
+        '</button>' +
+      '</div>';
     });
-    html+='</div>';
+    html += '</div>';
   });
-  el.innerHTML=html;
+
+  el.innerHTML = html;
+}
+
+function inlineSaveTaskText(devId, idx, newText) {
+  if(!newText) return;
+  var d = CACHE.devProjects.find(function(x){ return String(x.id)===String(devId); });
+  if(!d || !d.tasks || !d.tasks[idx]) return;
+  if(d.tasks[idx].text === newText) return;
+  d.tasks[idx].text = newText;
+  FB.patch('devProjects/'+devId, { tasks: d.tasks });
+  updateDevProgress(devId);
+}
+
+function inlineTaskKeydown(e, devId, idx) {
+  if(e.key === 'Enter') {
+    e.preventDefault();
+    e.target.blur();
+    addInlineDevTask(devId, idx + 1);
+  }
+  if(e.key === 'Backspace' && e.target.innerText === '') {
+    e.preventDefault();
+    deleteDevProjectTask(devId, idx);
+  }
+  if(e.key === 'Escape') { e.target.blur(); }
+}
+
+function addInlineDevTask(devId, insertAfter) {
+  var d = CACHE.devProjects.find(function(x){ return String(x.id)===String(devId); });
+  if(!d) return;
+  if(!d.tasks) d.tasks = [];
+
+  var newTask = { category: '기본', text: '', deadline: '', done: false };
+  if(insertAfter !== undefined) {
+    d.tasks.splice(insertAfter, 0, newTask);
+  } else {
+    d.tasks.push(newTask);
+  }
+
+  FB.patch('devProjects/'+devId, { tasks: d.tasks });
+  renderDevProjectTasks(devId);
+  updateDevProgress(devId);
+
+  // 새로 추가된 항목에 바로 포커스
+  setTimeout(function(){
+    var targetIdx = insertAfter !== undefined ? insertAfter : d.tasks.length - 1;
+    var rows = document.querySelectorAll('[data-devtask="'+devId+'-'+targetIdx+'"] [contenteditable]');
+    if(rows.length) { rows[0].focus(); cursorEnd(rows[0]); }
+  }, 40);
+}
+
+function inlineSaveTaskDate(devId, idx, date) {
+  var d = CACHE.devProjects.find(function(x){ return String(x.id)===String(devId); });
+  if(!d || !d.tasks || !d.tasks[idx]) return;
+  d.tasks[idx].deadline = date;
+  FB.patch('devProjects/'+devId, { tasks: d.tasks });
+  renderDevProjectTasks(devId);
+}
+
+function addDeadlineToTask(devId, idx) {
+  var d = CACHE.devProjects.find(function(x){ return String(x.id)===String(devId); });
+  if(!d || !d.tasks || !d.tasks[idx]) return;
+  d.tasks[idx].deadline = new Date().toISOString().slice(0,10);
+  FB.patch('devProjects/'+devId, { tasks: d.tasks });
+  renderDevProjectTasks(devId);
+}
+
+function renameCat(devId, oldCat, newCat) {
+  if(!newCat || oldCat === newCat) return;
+  var d = CACHE.devProjects.find(function(x){ return String(x.id)===String(devId); });
+  if(!d || !d.tasks) return;
+  d.tasks.forEach(function(t){ if(t.category === oldCat) t.category = newCat; });
+  FB.patch('devProjects/'+devId, { tasks: d.tasks });
+  renderDevProjectTasks(devId);
+  showToast('분류명 변경: '+newCat);
 }
 
 // 🌟 진행률 자동 계산 함수 (새로 추가)
