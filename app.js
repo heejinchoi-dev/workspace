@@ -3807,19 +3807,20 @@ function sendNativeNotification(title, body) {
 function canViewTab(tabName) {
   if(!USER) return false;
   if(USER.role === 'ADMIN') return true;
-  if(!CACHE.tabPermissions) return tabName !== 'approval' && tabName !== 'accounting';
 
-  // 제한 탭 목록
   var restrictedTabs = ['approval', 'accounting'];
   if(restrictedTabs.indexOf(tabName) === -1) return true;
 
-  // 허용된 이메일 목록 확인
-  var perms = CACHE.tabPermissions[tabName];
-  if(!perms) return false; // 설정이 없으면 ADMIN만 접근
+  // tabPermissions 자체가 없거나, 해당 탭 설정이 없으면 전체 공개
+  var perms = (CACHE.tabPermissions || {})[tabName];
+  if(!perms || !perms.emails || perms.emails.trim() === '') return true;
 
-  var allowedEmails = (perms.emails || '').toLowerCase().split(',').map(function(e){ return e.trim(); });
+  var allowedEmails = perms.emails.toLowerCase().split(',').map(function(e){ return e.trim(); }).filter(Boolean);
+  if(allowedEmails.length === 0) return true;
+
   return allowedEmails.indexOf(USER.email.toLowerCase()) > -1;
 }
+
 
 function applyTabPermissions() {
   // 사이드바 탭 숨김/표시
