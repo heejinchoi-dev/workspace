@@ -1179,11 +1179,11 @@ function renderDevProjectTasks(id){
       html += '<div class="flex items-center gap-2 px-3 py-1.5 group hover:bg-gray-50 r16 transition" data-devtask="'+id+'-'+idx+'">' +
         '<input type="checkbox" class="w-4 h-4 rounded accent-indigo-600 cursor-pointer shrink-0" ' +
           (isDone?'checked':'') + ' onchange="toggleDevProjectTask(\''+id+'\','+idx+',this.checked)">' +
-        '<span contenteditable="true" ' +
-          'class="flex-1 text-xs outline-none '+(isDone?'line-through text-gray-400':'text-gray-700 font-medium')+' ' +
-          'hover:bg-indigo-50/50 focus:bg-indigo-50/50 px-1 r8 transition min-w-0" ' +
+        '<span ' +
+          (isDone ? '' : 'contenteditable="true" ' +
           'onblur="inlineSaveTaskText(\''+id+'\','+idx+',this.innerText.trim())" ' +
-          'onkeydown="inlineTaskKeydown(event,\''+id+'\','+idx+')">' +
+          'onkeydown="inlineTaskKeydown(event,\''+id+'\','+idx+')" ') +
+          'class="flex-1 text-xs outline-none '+(isDone?'line-through text-gray-400 cursor-not-allowed':'text-gray-700 font-medium hover:bg-indigo-50/50 focus:bg-indigo-50/50 cursor-text')+' px-1 r8 transition min-w-0">' +
           escBlock(t.text) +
         '</span>' +
         (t.deadline
@@ -1216,6 +1216,15 @@ function inlineSaveTaskText(devId, idx, newText) {
   d.tasks[idx].text = newText;
   FB.patch('devProjects/'+devId, { tasks: d.tasks });
   updateDevProgress(devId);
+}
+
+function inlineSaveTodoTitle(id, el) {
+  var newTitle = el.innerText.trim();
+  var t = CACHE.tasks.find(function(x){ return x.id === id; });
+  if(!t || !newTitle) { if(t) el.innerText = t.title; return; }
+  if(t.title === newTitle) return;
+  t.title = newTitle;
+  FB.patch('tasks/'+id, { title: newTitle });
 }
 
 function inlineTaskKeydown(e, devId, idx) {
@@ -2956,10 +2965,16 @@ function renderMyTodo(){
     var delBtn = isCreator ? `<button onclick="deleteTodo('${t.id}')" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition"><i class="ri-delete-bin-line"></i></button>` : '';
 
     // 🌟 data-id 부여 및 손잡이(todo-drag-handle) 아이콘 추가
+    var isDone = t.status === 'Done';
     return `<div data-id="${t.id}" class="flex items-center gap-3 p-3 bg-gray-50 r20 group hover:bg-gray-100 transition">
       <i class="ri-draggable text-gray-300 hover:text-gray-500 cursor-move todo-drag-handle text-lg"></i>
-      <input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0" ${t.status==='Done'?'checked':''} onchange="toggleTodo('${t.id}',this.checked)">
-      <span class="flex-1 text-sm font-bold ${t.status==='Done'?'line-through text-gray-400':'text-gray-700'}">${esc(t.title)}${fromBadge}</span>
+      <input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0" ${isDone?'checked':''} onchange="toggleTodo('${t.id}',this.checked)">
+      <span
+        ${isDone ? '' : `contenteditable="true"
+          onblur="inlineSaveTodoTitle('${t.id}', this)"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}if(event.key==='Escape')this.blur()"`}
+        class="flex-1 text-sm font-bold ${isDone ? 'line-through text-gray-400 cursor-not-allowed' : 'text-gray-700 outline-none hover:bg-blue-50/50 focus:bg-blue-50/50 px-1 r8 cursor-text transition'}"
+      >${esc(t.title)}${fromBadge}</span>
       ${delBtn}
     </div>`;
   }).join('');
