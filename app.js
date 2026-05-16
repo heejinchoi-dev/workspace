@@ -509,8 +509,18 @@ function renderCalendar() {
             <button onclick="clearDoneTodos()" class="bg-red-100 text-red-500 text-[10px] px-3 py-1 r20 hover:bg-red-200 transition">완료 항목 삭제</button>
             <i class="ri-drag-move-fill text-gray-300 text-lg"></i>
           </div>
+          <div class="flex flex-col gap-2 mb-4">
+           <div class="flex gap-2">
+            <input type="text" id="my-todo-input" placeholder="할 일 입력 후 Enter..." 
+              class="flex-1 border p-3 r24 text-sm outline-none focus:border-blue-500 bg-gray-50 transition" 
+              onkeypress="if(event.key==='Enter')addMyTodo()">
+              <button onclick="addMyTodo()" 
+              class="bg-blue-600 text-white w-12 h-12 r24 font-bold text-xl hover:bg-blue-700 transition shrink-0">+</button>
+  </div>
+  <input type="date" id="my-todo-deadline" 
+    class="w-full border p-2.5 r20 text-xs outline-none focus:border-blue-400 bg-gray-50 text-gray-500">
+</div>
         </div>
-        '<div class="flex flex-col gap-2 mb-4"><div class="flex gap-2"><input type="text" id="my-todo-input" placeholder="할 일 입력 후 Enter..." class="flex-1 border p-3 r24 text-sm outline-none focus:border-blue-500 bg-gray-50 transition" onkeypress="if(event.key===\'Enter\')addMyTodo()"><button onclick="addMyTodo()" class="bg-blue-600 text-white w-12 h-12 r24 font-bold text-xl hover:bg-blue-700 transition shrink-0">+</button></div><input type="date" id="my-todo-deadline" class="w-full border p-2.5 r20 text-xs outline-none focus:border-blue-400 bg-gray-50 text-gray-500"></div>'+
         <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
       </div>`,
     'col-team-board': `
