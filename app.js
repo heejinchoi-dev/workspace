@@ -2970,28 +2970,49 @@ function renderMyTodo(){
 }
 
 function addMyTodo(){
-  var input=document.getElementById('my-todo-input');
-  var deadline=document.getElementById('my-todo-deadline');
-  var title=input?input.value.trim():'';if(!title)return;
-  input.value='';
-  var id=genId();
-  var obj={id:id,taskType:'personal',project:'일반',category:'할일',title:title,assignees:USER.email,priority:'Medium',deadline:deadline?deadline.value:'',content:'',status:'Todo',creator:USER.email,timestamp:Date.now()};
-  CACHE.tasks.push(obj);renderMyTodo();FB.set('tasks/'+id,obj);
-}
+  var input = document.getElementById('my-todo-input');
+  var deadline = document.getElementById('my-todo-deadline');
+  var title = input ? input.value.trim() : '';
+  if(!title) return;
+  input.value = '';
 
-function toggleTodo(id,done){var ns=done?'Done':'Todo';var t=CACHE.tasks.find(function(x){return x.id===id;});if(t)t.status=ns;renderMyTodo();FB.patch('tasks/'+id,{status:ns});}
-function deleteTodo(id){
-  var t = CACHE.tasks.find(x => x.id === id);
-  if(!t) return;
-  if((t.creator||'').toLowerCase() !== USER.email.toLowerCase()) return showToast("자신이 등록한 업무만 삭제할 수 있습니다.");
-  
-  openCustomConfirm("할 일 삭제", "정말 이 항목을 삭제하시겠습니까?", function(){
-    CACHE.tasks = CACHE.tasks.filter(x => x.id !== id);
-    renderMyTodo();
-    FB.patch('tasks/'+id, { isDeleted: true, deletedAt: Date.now() });
-    closeModal('custom-confirm-modal');
-    showToast("삭제 완료");
-  });
+  // @멘션된 팀원 이메일 추출
+  var mentionedEmails = [];
+  var matches = title.match(/@([가-힣a-zA-Z0-9]+)/g);
+  if(matches) {
+    matches.forEach(function(m) {
+      var name = m.slice(1);
+      var member = CACHE.members.find(function(x){ return x.name === name; });
+      if(member) mentionedEmails.push(member.email);
+    });
+  }
+
+  var hasMention = mentionedEmails.length > 0;
+  var assignees = hasMention
+    ? [USER.email].concat(mentionedEmails).filter(function(v,i,a){ return a.indexOf(v)===i; }).join(',')
+    : USER.email;
+
+  var id = genId();
+  var obj = {
+    id: id,
+    taskType: hasMention ? 'team' : 'personal',
+    project: hasMention ? '멘션 업무' : '일반',
+    category: '할일',
+    title: title,
+    assignees: assignees,
+    priority: 'Medium',
+    deadline: deadline ? deadline.value : '',
+    content: '',
+    status: 'Todo',
+    creator: USER.email,
+    timestamp: Date.now()
+  };
+
+  CACHE.tasks.push(obj);
+  renderMyTodo();
+  if(hasMention) renderTeamProjectBoard();
+  FB.set('tasks/' + id, obj);
+  if(hasMention) showToast('✅ 멘션된 팀원의 전사 업무 현황에 공유됩니다!');
 }
 
 // [수정됨] 업무 상세창 (이미지 갤러리 및 업로드 추가)
