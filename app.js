@@ -510,10 +510,7 @@ function renderCalendar() {
             <i class="ri-drag-move-fill text-gray-300 text-lg"></i>
           </div>
         </div>
-        <div class="flex gap-2 mb-4">
-          <input type="text" id="my-todo-input" placeholder="@이름 멘션 가능..." class="flex-1 border p-2.5 r20 text-xs outline-none bg-gray-50" onkeypress="if(event.key==='Enter')addMyTodo()">
-          <button onclick="addMyTodo()" class="bg-pink-500 text-white w-9 h-9 r20 font-bold">+</button>
-        </div>
+        '<div class="flex flex-col gap-2 mb-4"><div class="flex gap-2"><input type="text" id="my-todo-input" placeholder="할 일 입력 후 Enter..." class="flex-1 border p-3 r24 text-sm outline-none focus:border-blue-500 bg-gray-50 transition" onkeypress="if(event.key===\'Enter\')addMyTodo()"><button onclick="addMyTodo()" class="bg-blue-600 text-white w-12 h-12 r24 font-bold text-xl hover:bg-blue-700 transition shrink-0">+</button></div><input type="date" id="my-todo-deadline" class="w-full border p-2.5 r20 text-xs outline-none focus:border-blue-400 bg-gray-50 text-gray-500"></div>'+
         <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
       </div>`,
     'col-team-board': `
@@ -2944,100 +2941,36 @@ function renderTeamCalendar() {
 
 // [수정됨] 나의 할 일 (드래그 앤 드롭 순서 변경 및 저장 기능 추가)
 function renderMyTodo(){
-  var el = document.getElementById('my-todo-list');
-  if(!el) return;
-  
-  // 🌟 (a.order || 0) - (b.order || 0) 를 추가하여 드래그한 순서대로 정렬
-  var myTasks = CACHE.tasks.filter(function(t){
-    return t.taskType==='personal' && (t.assignees||'').toLowerCase().indexOf(USER.email.toLowerCase()) > -1;
-  }).sort(function(a,b){
-    return (a.status==='Done'?1:0) - (b.status==='Done'?1:0) || (a.order||0) - (b.order||0) || (b.timestamp||0) - (a.timestamp||0);
+  var el=document.getElementById('my-todo-list');if(!el)return;
+  var today=new Date();today.setHours(0,0,0,0);
+  var myTasks=CACHE.tasks.filter(function(t){return t.taskType==='personal'&&(t.creator||'').toLowerCase()===USER.email.toLowerCase();}).sort(function(a,b){
+    if(a.status==='Done'&&b.status!=='Done')return 1;
+    if(a.status!=='Done'&&b.status==='Done')return -1;
+    if(a.deadline&&b.deadline)return new Date(a.deadline)-new Date(b.deadline);
+    if(a.deadline)return -1;if(b.deadline)return 1;
+    return 0;
   });
-  
-  if(myTasks.length === 0){
-    el.innerHTML = '<p class="text-xs text-gray-400 font-bold text-center py-4">할 일이 없습니다.</p>';
-    return;
-  }
-
-  el.innerHTML = myTasks.map(function(t){
-    var isCreator = (t.creator||'').toLowerCase() === USER.email.toLowerCase();
-    var fromBadge = isCreator ? '' : `<span class="ml-2 text-[9px] bg-blue-50 text-blue-500 px-1.5 py-0.5 r10 font-bold border border-blue-100">by ${getMemberName(t.creator)}</span>`;
-    var delBtn = isCreator ? `<button onclick="deleteTodo('${t.id}')" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition"><i class="ri-delete-bin-line"></i></button>` : '';
-
-    // 🌟 data-id 부여 및 손잡이(todo-drag-handle) 아이콘 추가
-    var isDone = t.status === 'Done';
-    return `<div data-id="${t.id}" class="flex items-center gap-3 p-3 bg-gray-50 r20 group hover:bg-gray-100 transition">
-      <i class="ri-draggable text-gray-300 hover:text-gray-500 cursor-move todo-drag-handle text-lg"></i>
-      <input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0" ${isDone?'checked':''} onchange="toggleTodo('${t.id}',this.checked)">
-      <span
-        ${isDone ? '' : `contenteditable="true"
-          onblur="inlineSaveTodoTitle('${t.id}', this)"
-          onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}if(event.key==='Escape')this.blur()"`}
-        class="flex-1 text-sm font-bold ${isDone ? 'line-through text-gray-400 cursor-not-allowed' : 'text-gray-700 outline-none hover:bg-blue-50/50 focus:bg-blue-50/50 px-1 r8 cursor-text transition'}"
-      >${esc(t.title)}${fromBadge}</span>
-      ${delBtn}
-    </div>`;
-  }).join('');
-
-  // 🌟 SortableJS를 이용한 드래그 앤 드롭 활성화 및 Firebase 순서 업데이트
-  if(window.myTodoSortable) window.myTodoSortable.destroy(); // 기존 인스턴스 초기화
-  window.myTodoSortable = new Sortable(el, {
-    handle: '.todo-drag-handle', // 손잡이 부분만 잡고 끌 수 있게 설정
-    animation: 150,
-    ghostClass: 'opacity-50', // 드래그 중인 항목 반투명 처리
-    onEnd: function(evt) {
-      // 드래그가 끝난 후, 바뀐 순서(index)를 파이어베이스에 각각 저장
-      var items = Array.from(evt.to.children);
-      items.forEach(function(item, idx) {
-        var id = item.getAttribute('data-id');
-        var task = CACHE.tasks.find(x => x.id === id);
-        if(task && task.order !== idx) {
-          task.order = idx;
-          FB.patch('tasks/' + id, { order: idx }); // 조용히 서버만 업데이트
-        }
-      });
+  el.innerHTML=myTasks.length===0?'<p class="text-xs text-gray-400 font-bold text-center py-4">할 일이 없습니다.</p>':myTasks.map(function(t){
+    var ddBadge='';
+    if(t.deadline&&t.status!=='Done'){
+      var diff=Math.ceil((new Date(t.deadline)-today)/86400000);
+      if(diff<0)ddBadge='<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black shrink-0">D+'+Math.abs(diff)+'</span>';
+      else if(diff===0)ddBadge='<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black animate-pulse shrink-0">D-day</span>';
+      else if(diff<=3)ddBadge='<span class="text-[10px] bg-orange-400 text-white px-2 py-0.5 r20 font-black shrink-0">D-'+diff+'</span>';
+      else ddBadge='<span class="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 r20 font-bold shrink-0">'+t.deadline+'</span>';
     }
-  });
+    return'<div class="flex items-center gap-2 p-3 bg-gray-50 r20 group hover:bg-gray-100 transition"><input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0" '+(t.status==='Done'?'checked':'')+' onchange="toggleTodo(\''+t.id+'\',this.checked)"><span class="flex-1 text-sm font-bold '+(t.status==='Done'?'line-through text-gray-400':'text-gray-700')+'">'+esc(t.title)+'</span>'+ddBadge+'<button onclick="deleteTodo(\''+t.id+'\')" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition ml-1"><i class="ri-delete-bin-line"></i></button></div>';
+  }).join('');
 }
 
 function addMyTodo(){
   var input=document.getElementById('my-todo-input');
-  var title=input?input.value.trim():''; if(!title) return;
-  
-  var mentions = [];
-  var mentionRegex = /@([가-힣a-zA-Z0-9]+)/g;
-  var match;
-  
-  // 1. 멘션된 이름으로 정확한 이메일 찾기
-  while ((match = mentionRegex.exec(title)) !== null) {
-    var mName = match[1];
-    var found = CACHE.members.find(m => m.name === mName);
-    if(found) mentions.push(found.email.toLowerCase());
-  }
-
-  var id = genId();
-  // 2. 담당자 목록 생성 (나 + 멘션된 사람들)
-  var assigneeList = [USER.email.toLowerCase()];
-  mentions.forEach(m => { if(!assigneeList.includes(m)) assigneeList.push(m); });
-
-  var obj = {
-    id: id,
-    taskType: 'personal',
-    project: '일반',
-    category: '할일',
-    title: title,
-    assignees: assigneeList.join(','), // 쉼표로 구분하여 저장
-    priority: 'Medium',
-    deadline: '',
-    content: '',
-    status: 'Todo',
-    creator: USER.email,
-    timestamp: Date.now()
-  };
-  
-  // 3. 서버에 저장 (저장 즉시 1단계 리스너가 모든 PC 화면을 갱신합니다)
-  FB.set('tasks/'+id, obj);
-  input.value = '';
+  var deadline=document.getElementById('my-todo-deadline');
+  var title=input?input.value.trim():'';if(!title)return;
+  input.value='';
+  var id=genId();
+  var obj={id:id,taskType:'personal',project:'일반',category:'할일',title:title,assignees:USER.email,priority:'Medium',deadline:deadline?deadline.value:'',content:'',status:'Todo',creator:USER.email,timestamp:Date.now()};
+  CACHE.tasks.push(obj);renderMyTodo();FB.set('tasks/'+id,obj);
 }
 
 function toggleTodo(id,done){var ns=done?'Done':'Todo';var t=CACHE.tasks.find(function(x){return x.id===id;});if(t)t.status=ns;renderMyTodo();FB.patch('tasks/'+id,{status:ns});}
