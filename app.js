@@ -511,14 +511,10 @@ function renderCalendar() {
           </div>
           <div class="flex flex-col gap-2 mb-4">
            <div class="flex gap-2">
-            <input type="text" id="my-todo-input" placeholder="할 일 입력 후 Enter..." 
-              class="flex-1 border p-3 r24 text-sm outline-none focus:border-blue-500 bg-gray-50 transition" 
-              onkeypress="if(event.key==='Enter')addMyTodo()">
-              <button onclick="addMyTodo()" 
-              class="bg-blue-600 text-white w-12 h-12 r24 font-bold text-xl hover:bg-blue-700 transition shrink-0">+</button>
-  </div>
-  <input type="date" id="my-todo-deadline" 
-    class="w-full border p-2.5 r20 text-xs outline-none focus:border-blue-400 bg-gray-50 text-gray-500">
+          <input type="text" id="my-todo-input" placeholder="할 일 입력 후 Enter..." class="flex-1 border p-4 r24 text-base outline-none focus:border-blue-500 bg-gray-50 transition" onkeypress="if(event.key==='Enter')addMyTodo()">
+          <button onclick="addMyTodo()" class="bg-blue-600 text-white w-14 h-14 r24 font-bold text-2xl hover:bg-blue-700 transition shrink-0">+</button>
+          </div>
+          <input type="date" id="my-todo-deadline" class="w-full border p-4 r20 text-sm outline-none focus:border-blue-400 bg-gray-50 text-gray-600 font-bold">
 </div>
         </div>
         <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
