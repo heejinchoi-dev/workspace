@@ -501,24 +501,24 @@ function renderCalendar() {
 
   var blocks = {
     'col-my-todo': `
-      <div data-id="col-my-todo" class="flex-1 bg-white p-6 r35 card-shadow flex flex-col overflow-hidden min-w-[300px] transition-all">
-        <div class="drag-handle flex justify-between items-center mb-4 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
-          <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm pointer-events-none"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
-          <div class="flex gap-2 items-center">
-            <button onclick="extractWeeklyReport()" class="bg-gray-800 text-white text-[10px] px-3 py-1 r20 hover:bg-black transition">주간보고 추출</button>
-            <button onclick="clearDoneTodos()" class="bg-red-100 text-red-500 text-[10px] px-3 py-1 r20 hover:bg-red-200 transition">완료 항목 삭제</button>
-            <i class="ri-drag-move-fill text-gray-300 text-lg"></i>
-          </div>
-          <div class="flex flex-col gap-2 mb-4">
-           <div class="flex gap-2">
-          <input type="text" id="my-todo-input" placeholder="할 일 입력 후 Enter..." class="flex-1 border p-4 r24 text-base outline-none focus:border-blue-500 bg-gray-50 transition" onkeypress="if(event.key==='Enter')addMyTodo()">
-          <button onclick="addMyTodo()" class="bg-blue-600 text-white w-14 h-14 r24 font-bold text-2xl hover:bg-blue-700 transition shrink-0">+</button>
-          </div>
-          <input type="date" id="my-todo-deadline" class="w-full border p-4 r20 text-sm outline-none focus:border-blue-400 bg-gray-50 text-gray-600 font-bold">
-</div>
-        </div>
-        <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
-      </div>`,
+  <div data-id="col-my-todo" class="flex-1 bg-white p-6 r35 card-shadow flex flex-col overflow-hidden min-w-[300px] transition-all">
+    <div class="drag-handle flex justify-between items-center mb-4 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
+      <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm pointer-events-none"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
+      <div class="flex gap-2 items-center">
+        <button onclick="extractWeeklyReport()" class="bg-gray-800 text-white text-[10px] px-3 py-1 r20 hover:bg-black transition">주간보고 추출</button>
+        <button onclick="clearDoneTodos()" class="bg-red-100 text-red-500 text-[10px] px-3 py-1 r20 hover:bg-red-200 transition">완료 항목 삭제</button>
+        <i class="ri-drag-move-fill text-gray-300 text-lg"></i>
+      </div>
+    </div>
+    <div class="flex flex-col gap-2 mb-4">
+      <div class="flex gap-2">
+        <input type="text" id="my-todo-input" placeholder="할 일 입력 후 Enter..." class="flex-1 border p-4 r24 text-base outline-none focus:border-blue-500 bg-gray-50 transition" onkeypress="if(event.key==='Enter')addMyTodo()">
+        <button onclick="addMyTodo()" class="bg-blue-600 text-white w-14 h-14 r24 font-bold text-2xl hover:bg-blue-700 transition shrink-0">+</button>
+      </div>
+      <input type="date" id="my-todo-deadline" class="w-full border p-4 r20 text-sm outline-none focus:border-blue-400 bg-gray-50 text-gray-600 font-bold">
+    </div>
+    <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
+  </div>`,
     'col-team-board': `
       <div data-id="col-team-board" class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden min-w-[300px] transition-all">
         <div class="drag-handle flex justify-between items-center mb-6 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
