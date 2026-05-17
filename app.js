@@ -2954,7 +2954,7 @@ function renderMyTodo(){
     if(t.taskType !== 'personal') return false;
     var isCreator  = (t.creator||'').toLowerCase() === USER.email.toLowerCase();
     var isAssignee = (t.assignees||'').toLowerCase().indexOf(USER.email.toLowerCase()) > -1;
-    return isCreator || isAssignee; // 내가 만들었거나 멘션된 업무 모두 표시
+    return isCreator || isAssignee;
   }).sort(function(a,b){
     if(a.status==='Done' && b.status!=='Done') return 1;
     if(a.status!=='Done' && b.status==='Done') return -1;
@@ -2969,28 +2969,24 @@ function renderMyTodo(){
         var ddBadge = '';
         if(t.deadline && t.status !== 'Done'){
           var diff = Math.ceil((new Date(t.deadline)-today)/86400000);
-          if(diff < 0)      ddBadge = '<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black shrink-0">D+'+Math.abs(diff)+'</span>';
+          if(diff < 0)        ddBadge = '<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black shrink-0">D+'+Math.abs(diff)+'</span>';
           else if(diff === 0) ddBadge = '<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black animate-pulse shrink-0">D-day</span>';
           else if(diff <= 3)  ddBadge = '<span class="text-[10px] bg-orange-400 text-white px-2 py-0.5 r20 font-black shrink-0">D-'+diff+'</span>';
           else                ddBadge = '<span class="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 r20 font-bold shrink-0">'+t.deadline+'</span>';
         }
 
-        // 멘션받은 업무 표시
         var isMentioned = (t.creator||'').toLowerCase() !== USER.email.toLowerCase();
         var mentionBadge = isMentioned
           ? '<span class="text-[9px] bg-blue-100 text-blue-500 px-1.5 py-0.5 r10 font-bold shrink-0 mr-1">@멘션</span>'
           : '';
 
-        // 삭제는 creator만 가능
         var isCreator = (t.creator||'').toLowerCase() === USER.email.toLowerCase();
 
         return '<div class="flex items-center gap-2 p-3 bg-gray-50 r20 hover:bg-gray-100 transition">'
           + '<input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0" '+(t.status==='Done'?'checked':'')+' onchange="toggleTodo(\''+t.id+'\',this.checked)">'
           + '<span class="flex-1 text-sm font-bold '+(t.status==='Done'?'line-through text-gray-400':'text-gray-700')+'">'+esc(t.title)+'</span>'
           + mentionBadge + ddBadge
-          + (isCreator
-              ? '<button onclick="deleteTodo(\''+t.id+'\')" class="text-red-300 hover:text-red-500 transition ml-1 shrink-0 p-1"><i class="ri-delete-bin-line"></i></button>'
-              : '')
+          + (isCreator ? '<button onclick="deleteTodo(\''+t.id+'\')" class="text-red-300 hover:text-red-500 transition ml-1 shrink-0 p-1"><i class="ri-delete-bin-line"></i></button>' : '')
           + '</div>';
       }).join('');
 }
@@ -3033,6 +3029,28 @@ function addMyTodo(){
   renderMyTodo();
   FB.set('tasks/' + id, obj);
   if(mentionedEmails.length > 0) showToast('✅ ' + mentionedEmails.length + '명의 할 일에도 표시됩니다!');
+}
+
+function toggleTodo(id, done) {
+  var ns = done ? 'Done' : 'Todo';
+  var t = CACHE.tasks.find(function(x){ return x.id === id; });
+  if(t) t.status = ns;
+  renderMyTodo();
+  FB.patch('tasks/' + id, { status: ns });
+}
+
+function deleteTodo(id) {
+  var t = CACHE.tasks.find(function(x){ return x.id === id; });
+  if(!t) return;
+  if((t.creator||'').toLowerCase() !== USER.email.toLowerCase()) {
+    return showToast("자신이 등록한 업무만 삭제할 수 있습니다.");
+  }
+  openCustomConfirm("할 일 삭제", "정말 이 항목을 삭제하시겠습니까?", function(){
+    CACHE.tasks = CACHE.tasks.filter(function(x){ return x.id !== id; });
+    renderMyTodo();
+    FB.patch('tasks/' + id, { isDeleted: true, deletedAt: Date.now() });
+    showToast("삭제 완료");
+  });
 }
 
 // [수정됨] 업무 상세창 (이미지 갤러리 및 업로드 추가)
