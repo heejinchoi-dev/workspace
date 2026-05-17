@@ -2947,26 +2947,52 @@ function renderTeamCalendar() {
 
 // [수정됨] 나의 할 일 (드래그 앤 드롭 순서 변경 및 저장 기능 추가)
 function renderMyTodo(){
-  var el=document.getElementById('my-todo-list');if(!el)return;
-  var today=new Date();today.setHours(0,0,0,0);
-  var myTasks=CACHE.tasks.filter(function(t){return t.taskType==='personal'&&(t.creator||'').toLowerCase()===USER.email.toLowerCase();}).sort(function(a,b){
-    if(a.status==='Done'&&b.status!=='Done')return 1;
-    if(a.status!=='Done'&&b.status==='Done')return -1;
-    if(a.deadline&&b.deadline)return new Date(a.deadline)-new Date(b.deadline);
-    if(a.deadline)return -1;if(b.deadline)return 1;
+  var el = document.getElementById('my-todo-list'); if(!el) return;
+  var today = new Date(); today.setHours(0,0,0,0);
+
+  var myTasks = CACHE.tasks.filter(function(t){
+    if(t.taskType !== 'personal') return false;
+    var isCreator  = (t.creator||'').toLowerCase() === USER.email.toLowerCase();
+    var isAssignee = (t.assignees||'').toLowerCase().indexOf(USER.email.toLowerCase()) > -1;
+    return isCreator || isAssignee; // 내가 만들었거나 멘션된 업무 모두 표시
+  }).sort(function(a,b){
+    if(a.status==='Done' && b.status!=='Done') return 1;
+    if(a.status!=='Done' && b.status==='Done') return -1;
+    if(a.deadline && b.deadline) return new Date(a.deadline)-new Date(b.deadline);
+    if(a.deadline) return -1; if(b.deadline) return 1;
     return 0;
   });
-  el.innerHTML=myTasks.length===0?'<p class="text-xs text-gray-400 font-bold text-center py-4">할 일이 없습니다.</p>':myTasks.map(function(t){
-    var ddBadge='';
-    if(t.deadline&&t.status!=='Done'){
-      var diff=Math.ceil((new Date(t.deadline)-today)/86400000);
-      if(diff<0)ddBadge='<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black shrink-0">D+'+Math.abs(diff)+'</span>';
-      else if(diff===0)ddBadge='<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black animate-pulse shrink-0">D-day</span>';
-      else if(diff<=3)ddBadge='<span class="text-[10px] bg-orange-400 text-white px-2 py-0.5 r20 font-black shrink-0">D-'+diff+'</span>';
-      else ddBadge='<span class="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 r20 font-bold shrink-0">'+t.deadline+'</span>';
-    }
-    return'<div class="flex items-center gap-2 p-3 bg-gray-50 r20 group hover:bg-gray-100 transition"><input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0" '+(t.status==='Done'?'checked':'')+' onchange="toggleTodo(\''+t.id+'\',this.checked)"><span class="flex-1 text-sm font-bold '+(t.status==='Done'?'line-through text-gray-400':'text-gray-700')+'">'+esc(t.title)+'</span>'+ddBadge+'<button onclick="deleteTodo(\''+t.id+'\')" class="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition ml-1"><i class="ri-delete-bin-line"></i></button></div>';
-  }).join('');
+
+  el.innerHTML = myTasks.length === 0
+    ? '<p class="text-xs text-gray-400 font-bold text-center py-4">할 일이 없습니다.</p>'
+    : myTasks.map(function(t){
+        var ddBadge = '';
+        if(t.deadline && t.status !== 'Done'){
+          var diff = Math.ceil((new Date(t.deadline)-today)/86400000);
+          if(diff < 0)      ddBadge = '<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black shrink-0">D+'+Math.abs(diff)+'</span>';
+          else if(diff === 0) ddBadge = '<span class="text-[10px] bg-red-500 text-white px-2 py-0.5 r20 font-black animate-pulse shrink-0">D-day</span>';
+          else if(diff <= 3)  ddBadge = '<span class="text-[10px] bg-orange-400 text-white px-2 py-0.5 r20 font-black shrink-0">D-'+diff+'</span>';
+          else                ddBadge = '<span class="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 r20 font-bold shrink-0">'+t.deadline+'</span>';
+        }
+
+        // 멘션받은 업무 표시
+        var isMentioned = (t.creator||'').toLowerCase() !== USER.email.toLowerCase();
+        var mentionBadge = isMentioned
+          ? '<span class="text-[9px] bg-blue-100 text-blue-500 px-1.5 py-0.5 r10 font-bold shrink-0 mr-1">@멘션</span>'
+          : '';
+
+        // 삭제는 creator만 가능
+        var isCreator = (t.creator||'').toLowerCase() === USER.email.toLowerCase();
+
+        return '<div class="flex items-center gap-2 p-3 bg-gray-50 r20 hover:bg-gray-100 transition">'
+          + '<input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0" '+(t.status==='Done'?'checked':'')+' onchange="toggleTodo(\''+t.id+'\',this.checked)">'
+          + '<span class="flex-1 text-sm font-bold '+(t.status==='Done'?'line-through text-gray-400':'text-gray-700')+'">'+esc(t.title)+'</span>'
+          + mentionBadge + ddBadge
+          + (isCreator
+              ? '<button onclick="deleteTodo(\''+t.id+'\')" class="text-red-300 hover:text-red-500 transition ml-1 shrink-0 p-1"><i class="ri-delete-bin-line"></i></button>'
+              : '')
+          + '</div>';
+      }).join('');
 }
 
 function addMyTodo(){
@@ -2976,30 +3002,25 @@ function addMyTodo(){
   if(!title) return;
   input.value = '';
 
-  // @멘션된 팀원 이메일 추출
+  // @멘션 파싱 → 이메일 추출
   var mentionedEmails = [];
   var matches = title.match(/@([가-힣a-zA-Z0-9]+)/g);
   if(matches) {
-    matches.forEach(function(m) {
+    matches.forEach(function(m){
       var name = m.slice(1);
       var member = CACHE.members.find(function(x){ return x.name === name; });
-      if(member) mentionedEmails.push(member.email);
+      if(member && member.email !== USER.email) mentionedEmails.push(member.email);
     });
   }
-
-  var hasMention = mentionedEmails.length > 0;
-  var assignees = hasMention
-    ? [USER.email].concat(mentionedEmails).filter(function(v,i,a){ return a.indexOf(v)===i; }).join(',')
-    : USER.email;
 
   var id = genId();
   var obj = {
     id: id,
-    taskType: hasMention ? 'team' : 'personal',
-    project: hasMention ? '멘션 업무' : '일반',
+    taskType: 'personal',
+    project: '일반',
     category: '할일',
     title: title,
-    assignees: assignees,
+    assignees: [USER.email].concat(mentionedEmails).join(','), // 멘션된 사람 포함
     priority: 'Medium',
     deadline: deadline ? deadline.value : '',
     content: '',
@@ -3010,9 +3031,8 @@ function addMyTodo(){
 
   CACHE.tasks.push(obj);
   renderMyTodo();
-  if(hasMention) renderTeamProjectBoard();
   FB.set('tasks/' + id, obj);
-  if(hasMention) showToast('✅ 멘션된 팀원의 전사 업무 현황에 공유됩니다!');
+  if(mentionedEmails.length > 0) showToast('✅ ' + mentionedEmails.length + '명의 할 일에도 표시됩니다!');
 }
 
 // [수정됨] 업무 상세창 (이미지 갤러리 및 업로드 추가)
