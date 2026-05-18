@@ -2976,20 +2976,33 @@ function renderMyTodo(){
         }
 
         var isMentioned = (t.creator||'').toLowerCase() !== USER.email.toLowerCase();
-        var mentionBadge = isMentioned
-          ? '<span class="text-[9px] bg-blue-100 text-blue-500 px-1.5 py-0.5 r10 font-bold shrink-0 mr-1">@멘션</span>'
+        var isCreator   = !isMentioned;
+
+        // @멘션 컬러 하이라이트
+        var titleHtml = esc(t.title).replace(
+          /@([가-힣a-zA-Z0-9]+)/g,
+          '<span class="text-blue-500 font-black bg-blue-50 px-1 rounded-md">@$1</span>'
+        );
+
+        // 멘션받은 업무 → 누가 할당했는지 표시
+        var assignorHtml = isMentioned
+          ? '<p class="text-[9px] text-blue-400 font-bold mt-0.5"><i class="ri-user-fill mr-0.5"></i>'+getMemberName(t.creator)+'님이 할당</p>'
           : '';
 
-        var isCreator = (t.creator||'').toLowerCase() === USER.email.toLowerCase();
+        var rowBg = isMentioned ? 'bg-blue-50/60 border border-blue-100' : 'bg-gray-50';
 
-        return '<div class="flex items-center gap-2 p-3 bg-gray-50 r20 hover:bg-gray-100 transition">'
+        return '<div class="flex items-center gap-2 p-3 '+rowBg+' r20 hover:brightness-95 transition">'
           + '<input type="checkbox" class="w-5 h-5 rounded accent-blue-600 cursor-pointer shrink-0" '+(t.status==='Done'?'checked':'')+' onchange="toggleTodo(\''+t.id+'\',this.checked)">'
-          + '<span class="flex-1 text-sm font-bold '+(t.status==='Done'?'line-through text-gray-400':'text-gray-700')+'">'+esc(t.title)+'</span>'
-          + mentionBadge + ddBadge
+          + '<div class="flex-1 min-w-0">'
+          +   '<p class="text-sm font-bold '+(t.status==='Done'?'line-through text-gray-400':'text-gray-700')+'">'+titleHtml+'</p>'
+          +   assignorHtml
+          + '</div>'
+          + ddBadge
           + (isCreator ? '<button onclick="deleteTodo(\''+t.id+'\')" class="text-red-300 hover:text-red-500 transition ml-1 shrink-0 p-1"><i class="ri-delete-bin-line"></i></button>' : '')
           + '</div>';
       }).join('');
 }
+
 
 function addMyTodo(){
   var input = document.getElementById('my-todo-input');
