@@ -364,8 +364,11 @@ function renderDashboard() {
   var d = new Date(), dateStr = d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + '일월화수목금토'[d.getDay()] + '요일';
 
   // 1. 사내 퀵링크 렌더링 데이터 준비
-  var qlHtml = (CACHE.quickLinks || []).map(function(q) {
-    return '<a href="' + q.url + '" target="_blank" class="flex flex-col items-center justify-center p-4 bg-white border border-gray-100 hover:border-blue-300 r24 shadow-sm hover:shadow-md transition group"><i class="' + esc(q.icon || 'ri-link') + ' text-2xl text-blue-500 mb-2 group-hover:scale-110 transition"></i><span class="text-xs font-bold text-gray-700 w-full text-center truncate">' + esc(q.name) + '</span></a>';
+ var qlHtml = (CACHE.quickLinks || []).map(function(q) {
+    return '<div class="relative group">'
+      + '<a href="' + q.url + '" target="_blank" class="flex flex-col items-center justify-center p-4 bg-white border border-gray-100 hover:border-blue-300 r24 shadow-sm hover:shadow-md transition"><i class="' + esc(q.icon || 'ri-link') + ' text-2xl text-blue-500 mb-2 group-hover:scale-110 transition"></i><span class="text-xs font-bold text-gray-700 w-full text-center truncate">' + esc(q.name) + '</span></a>'
+      + (canDelete() ? '<button onclick="deleteQuickLink(\'' + q.id + '\')" class="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-300 hover:bg-red-500 text-white text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"><i class="ri-close-line"></i></button>' : '')
+      + '</div>';
   }).join('');
   qlHtml += '<div onclick="openQuickLinkModal()" class="flex flex-col items-center justify-center p-4 bg-gray-50 border border-dashed border-gray-300 hover:border-blue-300 hover:bg-blue-50 r24 cursor-pointer transition group"><i class="ri-add-line text-2xl text-gray-400 mb-2 group-hover:text-blue-500 transition"></i><span class="text-xs font-bold text-gray-500 group-hover:text-blue-600">추가하기</span></div>';
 
@@ -450,9 +453,10 @@ function openQuickLinkModal(){
   openModal('ql-modal');
 }
 function submitQuickLink(){
-  var n=document.getElementById('ql-name').value, u=document.getElementById('ql-url').value;
+  var n=document.getElementById('ql-name').value.trim(), u=document.getElementById('ql-url').value.trim();
   if(!n||!u) return showToast('이름과 URL을 모두 입력해주세요.');
-  if(!u.startsWith('http')) u = 'https://' + u; // http 보정
+  // http/https 로 시작하지 않으면 https:// 자동 보정
+  if(!/^https?:\/\//i.test(u)) u = 'https://' + u;
   var id=genId();
   var obj={id:id, name:n, url:u, icon:'ri-external-link-line'};
   if(!CACHE.quickLinks) CACHE.quickLinks=[];
@@ -3254,7 +3258,7 @@ function listenRealtimeTasks() {
 // 앱 초기화 최종본
 function initApp(){
   showSkeleton();
-  applySidebarCollapseState();
+  applySidebarMode();
   
   // 🌟 실시간 리스너 실행 (이게 있어야 데이터가 즉시 반영됩니다)
   if(typeof listenRealtimeTasks === 'function') listenRealtimeTasks(); 
@@ -4695,24 +4699,39 @@ function deleteTaskImage(taskId, imgIdx) {
   });
 }
 
-/*═══════════ 사이드바 접기/펴기 (데스크탑) ═══════════*/
-function toggleSidebarCollapse() {
-  var sb = document.getElementById('sidebar');
-  if(!sb) return;
-  var collapsed = sb.classList.toggle('sidebar-collapsed');
-  localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
-  var icon = document.getElementById('sidebar-collapse-icon');
-  if(icon) icon.className = collapsed ? 'ri-contract-right-line text-xl' : 'ri-contract-left-line text-xl';
+/*═══════════ Claude 스타일 사이드바 (호버 자동 펼침 + 핀 고정) ═══════════*/
+// 모드: 'auto'(호버로 펼침) / 'pinned'(항상 펼침)
+function getSidebarMode() {
+  return localStorage.getItem('sidebarMode') || 'pinned';
 }
 
-// 새로고침 후에도 상태 유지
-function applySidebarCollapseState() {
-  if(localStorage.getItem('sidebarCollapsed') === '1') {
-    var sb = document.getElementById('sidebar');
-    if(sb && window.innerWidth >= 1024) {
-      sb.classList.add('sidebar-collapsed');
-      var icon = document.getElementById('sidebar-collapse-icon');
-      if(icon) icon.className = 'ri-contract-right-line text-xl';
-    }
+function applySidebarMode() {
+  var sb = document.getElementById('sidebar');
+  var icon = document.getElementById('sidebar-pin-icon');
+  if(!sb || window.innerWidth < 1024) return;
+
+  var mode = getSidebarMode();
+  if(mode === 'auto') {
+    sb.classList.add('sidebar-auto');     // 평소 접힘, 호버 시 펼침
+    if(icon) icon.className = 'ri-pushpin-2-line text-xl';
+  } else {
+    sb.classList.remove('sidebar-auto');  // 항상 펼침
+    if(icon) icon.className = 'ri-pushpin-2-fill text-xl';
   }
+}
+
+function toggleSidebarPin() {
+  var next = getSidebarMode() === 'auto' ? 'pinned' : 'auto';
+  localStorage.setItem('sidebarMode', next);
+  applySidebarMode();
+  showToast(next === 'auto' ? '사이드바: 자동 (마우스 올리면 펼침)' : '사이드바: 항상 펼침');
+}
+function deleteQuickLink(id){
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
+  openCustomConfirm("바로가기 삭제", "이 링크를 삭제할까요?", function(){
+    CACHE.quickLinks = (CACHE.quickLinks || []).filter(function(x){ return x.id !== id; });
+    FB.remove('quickLinks/' + id);
+    renderDashboard();
+    showToast("삭제 완료");
+  });
 }
