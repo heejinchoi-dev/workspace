@@ -4715,20 +4715,22 @@ function toggleSidebarHidden() {
   var sb = document.getElementById('sidebar');
   if(!sb) return;
   var hidden = sb.classList.toggle('sidebar-hidden');
+  document.body.classList.toggle('sidebar-is-hidden', hidden);   // ← 본문 확장 트리거
   localStorage.setItem('sidebarHidden', hidden ? '1' : '0');
   var icon = document.getElementById('sidebar-hamburger-icon');
   if(icon) icon.className = hidden ? 'ri-menu-line text-xl' : 'ri-menu-fold-line text-xl';
 }
 
-// 새로고침 후 상태 복원
 function applySidebarHiddenState() {
   if(window.innerWidth < 1024) return;
   var sb = document.getElementById('sidebar');
   var icon = document.getElementById('sidebar-hamburger-icon');
   if(localStorage.getItem('sidebarHidden') === '1') {
     if(sb) sb.classList.add('sidebar-hidden');
+    document.body.classList.add('sidebar-is-hidden');            // ← 복원 시에도 반영
     if(icon) icon.className = 'ri-menu-line text-xl';
   } else {
+    document.body.classList.remove('sidebar-is-hidden');
     if(icon) icon.className = 'ri-menu-fold-line text-xl';
   }
 }
