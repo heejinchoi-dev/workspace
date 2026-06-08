@@ -417,62 +417,15 @@ body {
 #slash-menu { max-height: 320px; overflow-y: auto; }
 .slash-menu-item.active { background: #eef2ff; }
 
-/* ════════════ Claude 스타일 사이드바 (데스크탑) ════════════ */
+/* ════════════ 사이드바 완전 숨김 (데스크탑) ════════════ */
 @media (min-width: 1025px) {
   #sidebar {
-    transition: width .28s cubic-bezier(.4,0,.2,1);
-    overflow-x: hidden;
+    transition: margin-left .28s cubic-bezier(.4,0,.2,1), opacity .2s ease;
   }
-
-  /* auto 모드: 평소 좁게 */
-  #sidebar.sidebar-auto {
-    width: 78px;
-    padding-left: 12px;
-    padding-right: 12px;
+  /* 숨김: 왼쪽으로 완전히 밀어내기 → 콘텐츠가 꽉 참 */
+  #sidebar.sidebar-hidden {
+    margin-left: -19rem;   /* w-72(18rem) + 여백 */
+    opacity: 0;
+    pointer-events: none;
   }
-  /* auto 모드라도 마우스 올리면 펼쳐짐 (Claude 느낌) */
-  #sidebar.sidebar-auto:hover {
-    width: 18rem;             /* = w-72 */
-    padding-left: 24px;
-    padding-right: 24px;
-    box-shadow: 4px 0 24px rgba(0,0,0,.06);
-  }
-
-  /* ── 접힌 상태(호버 안 했을 때)에서 텍스트 숨김 ── */
-  #sidebar.sidebar-auto:not(:hover) .sidebar-item {
-    justify-content: center;
-    gap: 0;
-    padding-left: 0;
-    padding-right: 0;
-  }
-  #sidebar.sidebar-auto:not(:hover) .sidebar-item > *:not(i) {
-    display: none;
-  }
-  #sidebar.sidebar-auto:not(:hover) .sidebar-item i { margin: 0; }
-
-  #sidebar.sidebar-auto:not(:hover) .sidebar-item.active {
-    box-shadow: none;
-    border-radius: 16px;
-  }
-
-  #sidebar.sidebar-auto:not(:hover) #sidebar-logo { height: 0; opacity: 0; }
-
-  /* 하단 사용자 카드 간소화 */
-  #sidebar.sidebar-auto:not(:hover) .mt-6.p-5 { padding: 8px; }
-  #sidebar.sidebar-auto:not(:hover) #sidebar-name,
-  #sidebar.sidebar-auto:not(:hover) #sidebar-email,
-  #sidebar.sidebar-auto:not(:hover) .mt-6.p-5 button span,
-  #sidebar.sidebar-auto:not(:hover) .mt-6.p-5 .text-gray-400.truncate { display: none; }
-  #sidebar.sidebar-auto:not(:hover) .mt-6.p-5 button { justify-content: center; padding: 10px 0; }
-  #sidebar.sidebar-auto:not(:hover) .mt-6.p-5 .flex.gap-2 { flex-direction: column; }
-  #sidebar.sidebar-auto:not(:hover) #badge-appr,
-  #sidebar.sidebar-auto:not(:hover) #badge-leave { display: none !important; }
-
-  /* 텍스트가 펼쳐질 때 부드럽게 */
-  #sidebar .sidebar-item > *:not(i),
-  #sidebar #sidebar-name,
-  #sidebar #sidebar-email { transition: opacity .15s ease; }
-
-  /* 핀 버튼은 접혔을 땐 숨김 (호버 시 다시 등장) */
-  #sidebar.sidebar-auto:not(:hover) [onclick="toggleSidebarPin()"] { display: none; }
 }

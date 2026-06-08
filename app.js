@@ -3258,7 +3258,7 @@ function listenRealtimeTasks() {
 // 앱 초기화 최종본
 function initApp(){
   showSkeleton();
-  applySidebarMode();
+  applySidebarHiddenState();
   
   // 🌟 실시간 리스너 실행 (이게 있어야 데이터가 즉시 반영됩니다)
   if(typeof listenRealtimeTasks === 'function') listenRealtimeTasks(); 
@@ -4699,33 +4699,7 @@ function deleteTaskImage(taskId, imgIdx) {
   });
 }
 
-/*═══════════ Claude 스타일 사이드바 (호버 자동 펼침 + 핀 고정) ═══════════*/
-// 모드: 'auto'(호버로 펼침) / 'pinned'(항상 펼침)
-function getSidebarMode() {
-  return localStorage.getItem('sidebarMode') || 'pinned';
-}
 
-function applySidebarMode() {
-  var sb = document.getElementById('sidebar');
-  var icon = document.getElementById('sidebar-pin-icon');
-  if(!sb || window.innerWidth < 1024) return;
-
-  var mode = getSidebarMode();
-  if(mode === 'auto') {
-    sb.classList.add('sidebar-auto');     // 평소 접힘, 호버 시 펼침
-    if(icon) icon.className = 'ri-pushpin-2-line text-xl';
-  } else {
-    sb.classList.remove('sidebar-auto');  // 항상 펼침
-    if(icon) icon.className = 'ri-pushpin-2-fill text-xl';
-  }
-}
-
-function toggleSidebarPin() {
-  var next = getSidebarMode() === 'auto' ? 'pinned' : 'auto';
-  localStorage.setItem('sidebarMode', next);
-  applySidebarMode();
-  showToast(next === 'auto' ? '사이드바: 자동 (마우스 올리면 펼침)' : '사이드바: 항상 펼침');
-}
 function deleteQuickLink(id){
   if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
   openCustomConfirm("바로가기 삭제", "이 링크를 삭제할까요?", function(){
@@ -4734,4 +4708,27 @@ function deleteQuickLink(id){
     renderDashboard();
     showToast("삭제 완료");
   });
+}
+
+/*═══════════ 사이드바 완전 숨김/보임 토글 (데스크탑) ═══════════*/
+function toggleSidebarHidden() {
+  var sb = document.getElementById('sidebar');
+  if(!sb) return;
+  var hidden = sb.classList.toggle('sidebar-hidden');
+  localStorage.setItem('sidebarHidden', hidden ? '1' : '0');
+  var icon = document.getElementById('sidebar-hamburger-icon');
+  if(icon) icon.className = hidden ? 'ri-menu-line text-xl' : 'ri-menu-fold-line text-xl';
+}
+
+// 새로고침 후 상태 복원
+function applySidebarHiddenState() {
+  if(window.innerWidth < 1024) return;
+  var sb = document.getElementById('sidebar');
+  var icon = document.getElementById('sidebar-hamburger-icon');
+  if(localStorage.getItem('sidebarHidden') === '1') {
+    if(sb) sb.classList.add('sidebar-hidden');
+    if(icon) icon.className = 'ri-menu-line text-xl';
+  } else {
+    if(icon) icon.className = 'ri-menu-fold-line text-xl';
+  }
 }
