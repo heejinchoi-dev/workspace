@@ -501,48 +501,48 @@ function renderCalendar() {
 
   var blocks = {
     'col-my-todo': `
-  <div data-id="col-my-todo" class="flex-1 bg-white p-6 r35 card-shadow flex flex-col overflow-hidden min-w-[300px] transition-all">
-    <div class="drag-handle flex justify-between items-center mb-4 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
+  <div data-id="col-my-todo" class="flex-1 bg-white p-4 md:p-6 r35 card-shadow flex flex-col overflow-hidden w-full lg:min-w-[300px] transition-all">
+    <div class="drag-handle flex flex-col md:flex-row md:justify-between md:items-center mb-4 gap-2 lg:cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
       <h2 class="font-bold text-gray-800 flex items-center gap-2 text-sm pointer-events-none"><i class="ri-user-heart-line text-pink-500"></i> 내 할 일</h2>
-      <div class="flex gap-2 items-center">
-        <button onclick="extractWeeklyReport()" class="bg-gray-800 text-white text-[10px] px-3 py-1 r20 hover:bg-black transition">주간보고 추출</button>
-        <button onclick="clearDoneTodos()" class="bg-red-100 text-red-500 text-[10px] px-3 py-1 r20 hover:bg-red-200 transition">완료 항목 삭제</button>
-        <i class="ri-drag-move-fill text-gray-300 text-lg"></i>
+      <div class="flex gap-2 items-center flex-wrap">
+        <button onclick="extractWeeklyReport()" class="bg-gray-800 text-white text-[10px] px-3 py-1.5 r20 hover:bg-black transition">주간보고 추출</button>
+        <button onclick="clearDoneTodos()" class="bg-red-100 text-red-500 text-[10px] px-3 py-1.5 r20 hover:bg-red-200 transition">완료 항목 삭제</button>
+        <i class="ri-drag-move-fill text-gray-300 text-lg hidden lg:inline"></i>
       </div>
     </div>
     <div class="flex flex-col gap-2 mb-4">
       <div class="flex gap-2">
-        <input type="text" id="my-todo-input" placeholder="할 일 입력 후 Enter..." class="flex-1 border p-4 r24 text-base outline-none focus:border-blue-500 bg-gray-50 transition" onkeypress="if(event.key==='Enter')addMyTodo()">
-        <button onclick="addMyTodo()" class="bg-blue-600 text-white w-14 h-14 r24 font-bold text-2xl hover:bg-blue-700 transition shrink-0">+</button>
+        <input type="text" id="my-todo-input" placeholder="할 일 입력 후 Enter..." class="flex-1 border p-3 md:p-4 r24 text-base outline-none focus:border-blue-500 bg-gray-50 transition" onkeypress="if(event.key==='Enter')addMyTodo()">
+        <button onclick="addMyTodo()" class="bg-blue-600 text-white w-12 h-12 md:w-14 md:h-14 r24 font-bold text-2xl hover:bg-blue-700 transition shrink-0">+</button>
       </div>
-      <input type="date" id="my-todo-deadline" class="w-full border p-4 r20 text-sm outline-none focus:border-blue-400 bg-gray-50 text-gray-600 font-bold">
+      <input type="date" id="my-todo-deadline" class="w-full border p-3 md:p-4 r20 text-sm outline-none focus:border-blue-400 bg-gray-50 text-gray-600 font-bold">
     </div>
-    <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar"></div>
+    <div id="my-todo-list" class="flex-1 overflow-y-auto space-y-2 hide-scrollbar min-h-[200px]"></div>
   </div>`,
     'col-team-board': `
-      <div data-id="col-team-board" class="flex-1 bg-white p-8 r35 card-shadow flex flex-col overflow-hidden min-w-[300px] transition-all">
-        <div class="drag-handle flex justify-between items-center mb-6 cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
-          <h2 class="font-black text-gray-800 text-lg flex items-center pointer-events-none"><i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황</h2>
+      <div data-id="col-team-board" class="flex-1 bg-white p-4 md:p-8 r35 card-shadow flex flex-col overflow-hidden w-full lg:min-w-[300px] transition-all">
+        <div class="drag-handle flex flex-col md:flex-row md:justify-between md:items-center mb-4 md:mb-6 gap-3 lg:cursor-move hover:bg-gray-50 p-2 -m-2 rounded-xl transition">
+          <h2 class="font-black text-gray-800 text-base md:text-lg flex items-center pointer-events-none"><i class="ri-team-fill text-blue-500 mr-2"></i> 전사 업무 현황</h2>
           <div class="flex items-center gap-3">
             <div class="flex bg-gray-100 p-1 r20">
               <button onclick="changeTeamView('list')" id="view-btn-list" class="px-3 py-1 r20 text-xs font-bold transition">리스트</button>
               <button onclick="changeTeamView('board')" id="view-btn-board" class="px-3 py-1 r20 text-xs font-bold transition">보드</button>
             </div>
-            <i class="ri-drag-move-fill text-gray-300 text-xl"></i>
+            <i class="ri-drag-move-fill text-gray-300 text-xl hidden lg:inline"></i>
           </div>
         </div>
-        <div id="team-project-tracking-board" class="flex-1 overflow-y-auto pr-2 hide-scrollbar flex flex-col"></div>
+        <div id="team-project-tracking-board" class="flex-1 overflow-y-auto pr-1 md:pr-2 hide-scrollbar flex flex-col min-h-[200px]"></div>
       </div>`
   };
 
   var orderedHtml = savedLayout.map(id => blocks[id]).join('');
 
   el.innerHTML = `
-    <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
-      <h1 class="text-2xl font-black text-gray-800"><i class="ri-briefcase-fill text-blue-600 mr-2"></i> 프로젝트 통합 관제</h1>
-      <button onclick="openTeamTaskModal()" class="bg-blue-600 text-white px-6 py-3 r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition">+ 새 업무 등록</button>
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 md:mb-6 gap-3">
+      <h1 class="text-xl md:text-2xl font-black text-gray-800"><i class="ri-briefcase-fill text-blue-600 mr-2"></i> 프로젝트 통합 관제</h1>
+      <button onclick="openTeamTaskModal()" class="bg-blue-600 text-white px-5 md:px-6 py-2.5 md:py-3 r35 text-sm font-bold shadow-lg hover:bg-blue-700 transition w-full md:w-auto">+ 새 업무 등록</button>
     </div>
-    <div id="cal-main-container" class="flex flex-col lg:flex-row gap-6 ${isMobile ? 'h-auto' : 'h-[calc(100vh-12rem)]'}">
+    <div id="cal-main-container" class="flex flex-col lg:flex-row gap-4 md:gap-6 ${isMobile ? 'h-auto pb-6' : 'h-[calc(100vh-12rem)]'}">
       ${orderedHtml}
     </div>
   `;
@@ -551,20 +551,22 @@ function renderCalendar() {
   renderTeamProjectBoard();
   setupMention('my-todo-input');
 
-  // 좌우 드래그 앤 드롭 활성화 (내 할일 vs 전사현황 위치 변경)
-  setTimeout(() => {
-    var container = document.getElementById('cal-main-container');
-    if(container) {
-      new Sortable(container, {
-        handle: '.drag-handle',
-        animation: 150,
-        onEnd: function() {
-          var order = Array.from(container.children).map(c => c.getAttribute('data-id'));
-          localStorage.setItem('calLayoutOrder', JSON.stringify(order));
-        }
-      });
-    }
-  }, 100);
+  // 좌우 드래그 앤 드롭은 데스크탑에서만 활성화 (모바일은 세로 배치라 비활성)
+  if(!isMobile) {
+    setTimeout(() => {
+      var container = document.getElementById('cal-main-container');
+      if(container) {
+        new Sortable(container, {
+          handle: '.drag-handle',
+          animation: 150,
+          onEnd: function() {
+            var order = Array.from(container.children).map(c => c.getAttribute('data-id'));
+            localStorage.setItem('calLayoutOrder', JSON.stringify(order));
+          }
+        });
+      }
+    }, 100);
+  }
 }
 
 function renderTeamProjectBoard() {
@@ -1050,20 +1052,6 @@ function openDevDetail(id){
             </div>
             <div id="block-editor-container" class="min-h-[80px] pl-6 relative"></div>
           </div>
-            <!-- 뷰 모드 -->
-            <div id="dev-desc-view" onclick="toggleDevDescEdit('${d.id}')"
-              class="prose prose-sm max-w-none bg-gray-50/50 p-5 r16 border border-gray-100 min-h-[60px] cursor-text hover:border-indigo-200 transition">
-              ${noteHtml}
-            </div>
-            <!-- 편집 모드 -->
-            <div id="dev-desc-editor-wrap" class="hidden">
-              <textarea id="dev-inline-md-editor"></textarea>
-              <div class="flex justify-end gap-2 mt-2">
-                <button onclick="cancelDevDescEdit()" class="px-4 py-2 bg-gray-100 r20 text-xs font-bold hover:bg-gray-200">취소</button>
-                <button onclick="saveDevDesc('${d.id}')" class="px-4 py-2 bg-indigo-600 text-white r20 text-xs font-bold hover:bg-indigo-700 shadow-sm">저장</button>
-              </div>
-            </div>
-          </div>
 
           <!-- 첨부 이미지 -->
           <div class="mb-6">
@@ -1078,7 +1066,11 @@ function openDevDetail(id){
             <div class="grid grid-cols-3 gap-2">
               ${d.images.length===0
                 ? '<p class="text-[10px] text-gray-400 col-span-3">없음</p>'
-                : d.images.map(img=>`<a href="${img}" target="_blank" class="block aspect-video bg-gray-100 r12 overflow-hidden border border-gray-100 hover:border-indigo-300 transition"><img src="${img}" class="w-full h-full object-cover"></a>`).join('')}
+                : d.images.map((img, imgIdx)=>`
+                  <div class="relative group aspect-video bg-gray-100 r12 overflow-hidden border border-gray-100 hover:border-indigo-300 transition">
+                    <img src="${img}" onclick="openImageViewer('${img}')" class="w-full h-full object-cover cursor-zoom-in">
+                    <button onclick="event.stopPropagation();deleteDevImage('${d.id}',${imgIdx})" class="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/50 hover:bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur-sm"><i class="ri-close-line"></i></button>
+                  </div>`).join('')}
             </div>
           </div>
         </div>
@@ -3106,7 +3098,11 @@ function openTaskDetail(id) {
             <label class="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 r20 text-xs font-bold transition">+ 사진 올리기<input type="file" class="hidden" accept="image/*" onchange="handleTaskImage(this, '${t.id}')"></label>
           </div>
           <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-            ${t.images.length===0 ? '<p class="text-xs text-gray-400 col-span-3 py-4">첨부된 사진이 없습니다.</p>' : t.images.map(img => `<a href="${img}" target="_blank" class="block aspect-video bg-gray-100 r20 overflow-hidden border border-gray-200 hover:border-blue-400 transition"><img src="${img}" class="w-full h-full object-cover object-center"></a>`).join('')}
+              ${t.images.length===0 ? '<p class="text-xs text-gray-400 col-span-3 py-4">첨부된 사진이 없습니다.</p>' : t.images.map((img, imgIdx) => `
+              <div class="relative group aspect-video bg-gray-100 r20 overflow-hidden border border-gray-200 hover:border-blue-400 transition">
+                <img src="${img}" onclick="openImageViewer('${img}')" class="w-full h-full object-cover object-center cursor-zoom-in">
+                <button onclick="event.stopPropagation();deleteTaskImage('${t.id}',${imgIdx})" class="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/50 hover:bg-red-500 text-white text-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur-sm"><i class="ri-close-line"></i></button>
+              </div>`).join('')}
           </div>
         </div>
 
@@ -4661,4 +4657,39 @@ function codeKeydown(e, bid, idx) {
   if(e.key === 'Escape') {
     addBlockAt(idx + 1);
   }
+}
+/*═══════════ 이미지 확대 뷰어 (개발/전사업무 공용) ═══════════*/
+function openImageViewer(url) {
+  renderModalRoot('image-viewer-modal', `
+    <div class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200] p-6" onclick="closeModal('image-viewer-modal')">
+      <button onclick="closeModal('image-viewer-modal')" class="absolute top-6 right-6 text-white/80 hover:text-white text-4xl z-10"><i class="ri-close-line"></i></button>
+      <img src="${url}" onclick="event.stopPropagation()" class="max-w-full max-h-[90vh] object-contain r20 shadow-2xl">
+      <a href="${url}" target="_blank" onclick="event.stopPropagation()" class="absolute bottom-6 left-1/2 -translate-x-1/2 bg-white/90 text-gray-800 px-6 py-2.5 r35 text-sm font-bold shadow-lg hover:bg-white transition"><i class="ri-external-link-line mr-1"></i> 원본 새 탭에서 열기</a>
+    </div>
+  `);
+  openModal('image-viewer-modal');
+}
+
+// 개발 프로젝트 이미지 삭제
+function deleteDevImage(devId, imgIdx) {
+  openCustomConfirm("이미지 삭제", "이 이미지를 삭제하시겠습니까?", function(){
+    var d = CACHE.devProjects.find(x => x.id === devId);
+    if(!d || !d.images) return;
+    d.images.splice(imgIdx, 1);
+    FB.patch('devProjects/' + devId, { images: d.images });
+    openDevDetail(devId);
+    showToast("이미지가 삭제되었습니다.");
+  });
+}
+
+// 전사 업무(Task) 이미지 삭제
+function deleteTaskImage(taskId, imgIdx) {
+  openCustomConfirm("이미지 삭제", "이 이미지를 삭제하시겠습니까?", function(){
+    var t = CACHE.tasks.find(x => x.id === taskId);
+    if(!t || !t.images) return;
+    t.images.splice(imgIdx, 1);
+    FB.patch('tasks/' + taskId, { images: t.images });
+    openTaskDetail(taskId);
+    showToast("이미지가 삭제되었습니다.");
+  });
 }
