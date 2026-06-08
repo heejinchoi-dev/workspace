@@ -413,19 +413,24 @@ body {
   transition: opacity .3s;
 }
 
-/* 슬래시 메뉴 */
-#slash-menu { max-height: 320px; overflow-y: auto; }
-.slash-menu-item.active { background: #eef2ff; }
-
 /* ════════════ 사이드바 완전 숨김 (데스크탑) ════════════ */
 @media (min-width: 1025px) {
   #sidebar {
-    transition: margin-left .28s cubic-bezier(.4,0,.2,1), opacity .2s ease;
+    transition: width .28s cubic-bezier(.4,0,.2,1), opacity .2s ease, padding .28s ease;
+    overflow: hidden;
   }
-  /* 숨김: 왼쪽으로 완전히 밀어내기 → 콘텐츠가 꽉 참 */
+  /* 숨김: 폭을 0으로 접어 콘텐츠가 꽉 차게 */
   #sidebar.sidebar-hidden {
-    margin-left: -19rem;   /* w-72(18rem) + 여백 */
+    width: 0 !important;
+    min-width: 0 !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    border: none !important;
     opacity: 0;
     pointer-events: none;
+  }
+  /* 내부 요소가 접히는 동안 비어져 나오지 않게 */
+  #sidebar.sidebar-hidden > * {
+    visibility: hidden;
   }
 }
