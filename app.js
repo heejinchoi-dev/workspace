@@ -3254,6 +3254,7 @@ function listenRealtimeTasks() {
 // 앱 초기화 최종본
 function initApp(){
   showSkeleton();
+  applySidebarCollapseState();
   
   // 🌟 실시간 리스너 실행 (이게 있어야 데이터가 즉시 반영됩니다)
   if(typeof listenRealtimeTasks === 'function') listenRealtimeTasks(); 
@@ -4692,4 +4693,26 @@ function deleteTaskImage(taskId, imgIdx) {
     openTaskDetail(taskId);
     showToast("이미지가 삭제되었습니다.");
   });
+}
+
+/*═══════════ 사이드바 접기/펴기 (데스크탑) ═══════════*/
+function toggleSidebarCollapse() {
+  var sb = document.getElementById('sidebar');
+  if(!sb) return;
+  var collapsed = sb.classList.toggle('sidebar-collapsed');
+  localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+  var icon = document.getElementById('sidebar-collapse-icon');
+  if(icon) icon.className = collapsed ? 'ri-contract-right-line text-xl' : 'ri-contract-left-line text-xl';
+}
+
+// 새로고침 후에도 상태 유지
+function applySidebarCollapseState() {
+  if(localStorage.getItem('sidebarCollapsed') === '1') {
+    var sb = document.getElementById('sidebar');
+    if(sb && window.innerWidth >= 1024) {
+      sb.classList.add('sidebar-collapsed');
+      var icon = document.getElementById('sidebar-collapse-icon');
+      if(icon) icon.className = 'ri-contract-right-line text-xl';
+    }
+  }
 }
