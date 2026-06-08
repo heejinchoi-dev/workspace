@@ -102,7 +102,16 @@
   </div>
 
   <div class="flex flex-1 overflow-hidden">
-         
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden" onclick="toggleSidebar()"></div>
+
+    <aside id="sidebar" class="w-72 bg-[#fbfbfa] border-r border-gray-200 flex flex-col p-6 z-50 overflow-y-auto hide-scrollbar flex-shrink-0 transition-transform duration-300 -translate-x-full lg:translate-x-0 fixed lg:static inset-y-0 left-0">
+      <div class="flex items-center justify-between mb-10 h-12 relative">
+        <img id="sidebar-logo" src="https://i.imgur.com/gzXQ8nD.png" alt="Logo" class="h-12 object-contain max-w-full transition-all">
+        <button onclick="toggleSidebarHidden()" title="메뉴 숨기기/보이기" class="hidden lg:flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition shrink-0">
+          <i class="ri-menu-fold-line text-xl"></i>
+        </button>
+      </div>
+
       <nav class="flex-1 space-y-1.5 text-sm font-bold text-gray-500">
         <div onclick="showTab('home')"        data-tab="home"        class="sidebar-item flex items-center gap-4 p-3.5 r24 active cursor-pointer hover:bg-white hover:shadow-sm transition"><i class="ri-home-smile-2-fill text-xl"></i> 대시보드</div>
         <div class="my-3 border-t border-gray-100"></div>
