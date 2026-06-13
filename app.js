@@ -5,7 +5,7 @@ firebase.initializeApp(firebaseConfig);var auth=firebase.auth(),db=firebase.data
 /*═══════════ Global ═══════════*/
 // 기존 코드: var USER=null,CACHE={tasks:[], ... ,wiki:[],leaveInfo:{total:15,used:0,remain:15}};
 // 아래처럼 변경 (products:[] 추가)
-var USER=null,CACHE={tasks:[],devProjects:[],sprints:[],crm:[],cs:[],schedules:[],approval:[],leaves:[],vault:[],comments:{},members:[],wiki:[],products:[],fixedExpenses:[],tabPermissions:{},leaveInfo:{total:15,used:0,remain:15}};
+var USER=null,CACHE={tasks:[],devProjects:[],hwProjects:[],sprints:[],crm:[],cs:[],schedules:[],approval:[],leaves:[],vault:[],comments:{},members:[],wiki:[],products:[],fixedExpenses:[],tabPermissions:{},leaveInfo:{total:15,used:0,remain:15}};
 var devView='기획중',confirmCb=null,chartCRM=null,chartTasks=null,activeNoticeId=null;
 var teamTaskViewMode = 'list';
 var isInitialLoad = true;
@@ -183,6 +183,7 @@ function processData(results){
   var now=Date.now();
   CACHE.tasks=parseNode(results.tasks).filter(function(t){return !t.isDeleted && !(t.status==='Done'&&(now-(parseInt(t.timestamp)||now))>30*86400000);});
   CACHE.devProjects=parseNode(results.devProjects).filter(function(p){return !p.isDeleted;});
+  CACHE.hwProjects=parseNode(results.hwProjects).filter(function(p){return !p.isDeleted;});
   CACHE.sprints=parseNode(results.sprints).filter(function(s){return !s.isDeleted;});
   CACHE.crm=parseNode(results.crm).filter(function(c){return !c.isDeleted;});
   CACHE.cs=parseNode(results.cs).filter(function(c){return !c.isDeleted;});
@@ -246,6 +247,7 @@ function showTab(name){
     teamcal:renderTeamCalendar, // 전사 캘린더
     products:renderProducts,
     dev:function(){ initDevTab(); renderDevProjects(); },
+    hw:function(){ initHwTab(); renderHwProjects(); },
     crm:filterCRM,
     cs:filterCS,
     approval:renderApproval,
@@ -3262,7 +3264,7 @@ function initApp(){
   
   // 🌟 실시간 리스너 실행 (이게 있어야 데이터가 즉시 반영됩니다)
   if(typeof listenRealtimeTasks === 'function') listenRealtimeTasks(); 
-  var nodes=['tasks','devProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices','quickLinks','products','fixedExpenses','tabPermissions']; 
+  var nodes=['tasks','devProjects','hwProjects','sprints','crm','cs','schedules','approvals','leaves','vault','comments','wiki','notices','quickLinks','products','fixedExpenses','tabPermissions'];
   var results={}, idx=0;
   
   function next(){
@@ -4732,5 +4734,629 @@ function applySidebarHiddenState() {
   } else {
     document.body.classList.remove('sidebar-is-hidden');
     if(icon) icon.className = 'ri-menu-fold-line text-xl';
+  }
+}
+
+/*═══════════════════════════════════════════════
+  HW 개발 프로젝트 (하드웨어 / 기기 관리)
+  - SW 개발 프로젝트와 동일한 칸반+슬라이드 패널 구조
+  - HW 특화 필드: 제조사, BOM, 리비전, 수량, 단가
+═══════════════════════════════════════════════*/
+
+var HW_STATUS_META = {
+  '설계중':    { dot:'bg-yellow-400',  badge:'bg-yellow-100 text-yellow-700' },
+  '시제품제작': { dot:'bg-orange-500',  badge:'bg-orange-100 text-orange-700' },
+  '검증/테스트':{ dot:'bg-purple-500',  badge:'bg-purple-100 text-purple-700' },
+  '양산준비':   { dot:'bg-blue-500',    badge:'bg-blue-100 text-blue-700' },
+  '양산완료':   { dot:'bg-green-500',   badge:'bg-green-100 text-green-700' },
+  '보류':      { dot:'bg-gray-300',    badge:'bg-gray-100 text-gray-500' }
+};
+
+var hwView = '설계중';
+var hwSelectedId = null;
+var hwMDE = null;
+
+function initHwTab(){
+  var el = document.getElementById('tab-hw');
+  if(el.querySelector('#hw-split-layout')) return;
+
+  el.innerHTML = `
+    <div class="flex items-center justify-between mb-4 gap-3 shrink-0">
+      <div class="flex items-center gap-3">
+        <h1 class="text-xl font-black text-gray-900 flex items-center gap-2">
+          <i class="ri-cpu-line text-slate-600"></i> HW 개발 프로젝트
+        </h1>
+        <span id="hw-project-count" class="text-xs font-bold text-gray-400 bg-gray-100 px-3 py-1 r20"></span>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <label class="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-500 bg-white px-3 py-2 r20 border border-gray-200 hover:bg-gray-50 transition">
+          <input type="checkbox" id="hw-my-filter" onchange="renderHwProjects()" class="w-3.5 h-3.5 accent-slate-600">내 것만
+        </label>
+        <select id="hw-status-filter" onchange="renderHwProjects()" class="border border-gray-200 bg-white p-2 r20 text-xs font-bold outline-none text-gray-600">
+          <option value="all">전체 상태</option>
+          ${Object.keys(HW_STATUS_META).map(s=>`<option>${s}</option>`).join('')}
+        </select>
+        <div class="relative">
+          <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+          <input type="text" id="hw-search" oninput="renderHwProjects()" placeholder="검색..." class="pl-8 pr-3 py-2 border border-gray-200 r20 text-xs outline-none w-36 bg-white">
+        </div>
+        <button onclick="openHwModal()" class="bg-slate-700 text-white px-4 py-2 r20 text-xs font-bold shadow-md hover:bg-slate-800 transition flex items-center gap-1.5">
+          <i class="ri-add-line"></i> 새 HW 프로젝트
+        </button>
+      </div>
+    </div>
+
+    <div id="hw-split-layout" class="flex gap-0 flex-1 min-h-0 bg-white r24 border border-gray-200 shadow-sm overflow-hidden">
+      <div id="hw-kanban-panel" class="w-[380px] shrink-0 border-r border-gray-100 flex flex-col overflow-hidden">
+        <div class="flex border-b border-gray-100 overflow-x-auto hide-scrollbar">
+          ${Object.keys(HW_STATUS_META).map((s,i) => {
+            const colors = {
+              '설계중':'text-yellow-600 border-yellow-400',
+              '시제품제작':'text-orange-600 border-orange-400',
+              '검증/테스트':'text-purple-600 border-purple-400',
+              '양산준비':'text-blue-600 border-blue-400',
+              '양산완료':'text-green-600 border-green-400',
+              '보류':'text-gray-500 border-gray-300'
+            };
+            return `<button onclick="setHwStatusFilter('${s}')" id="hw-tab-${i}"
+              class="hw-status-tab flex-1 whitespace-nowrap py-2.5 px-2 text-[10px] font-black uppercase tracking-wider transition border-b-2 ${s==='설계중'?'border-yellow-400 '+colors[s]:colors[s].split(' ')[0]+' border-transparent'}"
+              data-status="${s}">${s}</button>`;
+          }).join('')}
+        </div>
+        <div id="hw-card-list" class="flex-1 overflow-y-auto hide-scrollbar p-3 space-y-2"></div>
+      </div>
+
+      <div id="hw-detail-panel" class="flex-1 overflow-y-auto hide-scrollbar">
+        <div class="flex items-center justify-center h-full text-gray-300">
+          <div class="text-center">
+            <i class="ri-cpu-line text-5xl mb-3 block"></i>
+            <p class="text-sm font-bold">프로젝트를 선택하면<br>상세 내용이 여기에 표시됩니다</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  hwView = '설계중';
+}
+
+function setHwStatusFilter(status) {
+  hwView = status;
+  document.querySelectorAll('.hw-status-tab').forEach(btn => {
+    const s = btn.getAttribute('data-status');
+    const colorMap = {
+      '설계중': 'text-yellow-600 border-yellow-400',
+      '시제품제작': 'text-orange-600 border-orange-400',
+      '검증/테스트': 'text-purple-600 border-purple-400',
+      '양산준비': 'text-blue-600 border-blue-400',
+      '양산완료': 'text-green-600 border-green-400',
+      '보류': 'text-gray-500 border-gray-300'
+    };
+    const [tc, bc] = (colorMap[s]||'text-gray-500 border-gray-300').split(' ');
+    if(s === status) {
+      btn.className = `hw-status-tab flex-1 whitespace-nowrap py-2.5 px-2 text-[10px] font-black uppercase tracking-wider transition border-b-2 ${tc} ${bc}`;
+    } else {
+      btn.className = `hw-status-tab flex-1 whitespace-nowrap py-2.5 px-2 text-[10px] font-black uppercase tracking-wider transition border-b-2 ${tc} border-transparent`;
+    }
+  });
+  renderHwProjects();
+}
+
+function renderHwProjects(){
+  initHwTab();
+  var sf = hwView || '설계중';
+  var kw = (document.getElementById('hw-search')||{value:''}).value.toLowerCase();
+  var myOnly = document.getElementById('hw-my-filter') && document.getElementById('hw-my-filter').checked;
+
+  var data = CACHE.hwProjects.filter(function(p){
+    var isMy = !myOnly || (p.assignees||'').toLowerCase().indexOf(USER.email.toLowerCase())>-1;
+    var statusMatch = sf === 'all' || p.status === sf;
+    var kwMatch = !kw || (p.title||'').toLowerCase().indexOf(kw)>-1 || (p.tags||'').toLowerCase().indexOf(kw)>-1 || (p.maker||'').toLowerCase().indexOf(kw)>-1;
+    return isMy && statusMatch && kwMatch;
+  }).sort(function(a,b){ return (b.timestamp||0)-(a.timestamp||0); });
+
+  var cnt = document.getElementById('hw-project-count');
+  if(cnt) cnt.innerText = data.length + '건';
+
+  renderHwCardList(data);
+}
+
+function renderHwCardList(data){
+  var el = document.getElementById('hw-card-list');
+  if(!el) return;
+
+  if(!data.length){
+    el.innerHTML = '<div class="text-center py-12 text-gray-300"><i class="ri-inbox-line text-3xl block mb-2"></i><p class="text-xs font-bold">항목 없음</p></div>';
+    return;
+  }
+
+  const priorityDot = { P1:'bg-red-500', P2:'bg-orange-400', P3:'bg-blue-400', P4:'bg-gray-300' };
+
+  el.innerHTML = data.map(p => {
+    const isSelected = p.id === hwSelectedId;
+    const cmtCount = Object.values(CACHE.comments||{}).filter(c => c.targetId === p.id).length;
+    const pDot = priorityDot[p.priority] || 'bg-gray-300';
+    const sBadge = (HW_STATUS_META[p.status]||{}).badge || 'bg-gray-100 text-gray-500';
+    const tagList = (p.tags||'').split(',').filter(Boolean).slice(0,2);
+
+    return `
+      <div onclick="openHwDetail('${p.id}')"
+        class="group p-3.5 r20 border cursor-pointer transition-all ${isSelected
+          ? 'bg-slate-50 border-slate-300 shadow-sm'
+          : 'bg-white border-gray-100 hover:border-slate-200 hover:bg-gray-50/50'}"
+        data-hw-id="${p.id}">
+
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full ${pDot} shrink-0"></span>
+            <span class="text-[10px] font-black text-gray-400 uppercase tracking-wider">${p.ticketId||''}</span>
+            ${p.rev ? `<span class="text-[9px] font-black px-1.5 py-0.5 r8 bg-slate-100 text-slate-600">Rev.${esc(p.rev)}</span>` : ''}
+          </div>
+          <span class="text-[9px] font-black px-2 py-0.5 r20 ${sBadge}">${p.status}</span>
+        </div>
+
+        <p class="text-sm font-bold text-gray-800 leading-snug mb-2 group-hover:text-slate-700 transition ${isSelected?'text-slate-700':''}">${esc(p.title)}</p>
+
+        ${p.maker ? `<p class="text-[10px] text-gray-400 font-medium mb-2"><i class="ri-building-line"></i> ${esc(p.maker)}</p>` : ''}
+
+        ${tagList.length ? `<div class="flex gap-1 flex-wrap mb-2.5">${tagList.map(t => `<span class="text-[9px] font-bold px-2 py-0.5 r20 ${tagColor(t.trim())}">${esc(t.trim())}</span>`).join('')}</div>` : ''}
+
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-1.5">
+            <div class="flex">${avatarHtml(p.assignees,3)}</div>
+            ${p.qty ? `<span class="text-[9px] text-gray-400 font-medium ml-1"><i class="ri-stack-line"></i> ${esc(p.qty)}EA</span>` : ''}
+          </div>
+          <div class="flex items-center gap-2 text-[10px] text-gray-400">
+            ${cmtCount ? `<span><i class="ri-chat-3-line"></i> ${cmtCount}</span>` : ''}
+            <span class="font-bold text-slate-500">${p.progress||0}%</span>
+          </div>
+        </div>
+
+        <div class="mt-2.5 progress-bar" style="height:3px">
+          <div class="progress-fill" style="width:${p.progress||0}%"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openHwDetail(id){
+  var d = CACHE.hwProjects.find(x => String(x.id)===String(id));
+  if(!d) return;
+  if(!d.images) d.images = [];
+  if(!d.bom) d.bom = [];
+
+  hwSelectedId = id;
+  document.querySelectorAll('[data-hw-id]').forEach(el => {
+    const isSelected = el.getAttribute('data-hw-id') === id;
+    el.className = el.className.replace(
+      /bg-slate-50 border-slate-300 shadow-sm|bg-white border-gray-100 hover:border-slate-200 hover:bg-gray-50\/50/g, ''
+    );
+    el.className += isSelected
+      ? ' bg-slate-50 border-slate-300 shadow-sm'
+      : ' bg-white border-gray-100 hover:border-slate-200 hover:bg-gray-50/50';
+  });
+
+  var cList = Object.keys(CACHE.comments||{}).map(k=>CACHE.comments[k])
+    .filter(c=>c.targetId===id)
+    .sort((a,b)=>new Date(a.date)-new Date(b.date));
+
+  const sc = (HW_STATUS_META[d.status]||{}).badge || 'bg-gray-100 text-gray-500';
+  const pm = PRIORITY_META[d.priority];
+
+  var bomTotal = (d.bom||[]).reduce((acc,r)=> acc + ((Number(r.unitPrice)||0)*(Number(r.qty)||0)), 0);
+
+  var panel = document.getElementById('hw-detail-panel');
+  if(!panel) return;
+
+  panel.innerHTML = `
+    <div class="flex flex-col h-full">
+      <div class="px-8 pt-7 pb-4 border-b border-gray-100 shrink-0">
+        <div class="flex items-start justify-between gap-4 mb-4">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-2 flex-wrap">
+              <span class="text-[10px] font-black text-gray-400 uppercase tracking-widest">${d.ticketId||''}</span>
+              ${d.rev ? `<span class="text-[10px] font-black px-2 py-0.5 r8 bg-slate-100 text-slate-600">Rev.${esc(d.rev)}</span>` : ''}
+              ${pm ? `<span class="text-[10px] px-2 py-0.5 r20 font-black flex items-center gap-1 ${pm.bg} ${pm.text}"><i class="${pm.icon}"></i>${d.priority}</span>` : ''}
+            </div>
+            <h1 contenteditable="true"
+              onblur="inlineSaveHwTitle('${d.id}', this)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+              class="text-2xl font-black text-gray-900 leading-tight outline-none border-b-2 border-transparent focus:border-slate-300 pb-1 transition cursor-text"
+              title="클릭하여 제목 수정">${esc(d.title)}</h1>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button onclick="openHwModal(CACHE.hwProjects.find(x=>x.id==='${d.id}'))"
+              class="px-4 py-2 bg-gray-100 hover:bg-gray-200 r20 text-xs font-bold transition flex items-center gap-1.5">
+              <i class="ri-edit-line"></i> 수정
+            </button>
+            <button onclick="confirmDeleteHw('${d.id}')"
+              class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 r20 text-xs font-bold transition">
+              <i class="ri-delete-bin-line"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap gap-6 text-xs">
+          <div>
+            <p class="text-gray-400 font-bold mb-1 uppercase tracking-wider text-[10px]">상태</p>
+            <span class="px-3 py-1 r20 font-bold text-xs ${sc}">${d.status}</span>
+          </div>
+          <div>
+            <p class="text-gray-400 font-bold mb-1 uppercase tracking-wider text-[10px]">담당자</p>
+            <div class="flex items-center gap-1.5">${avatarHtml(d.assignees,6)}
+              <span class="text-gray-600 font-medium">${(d.assignees||'').split(',').filter(Boolean).map(e=>getMemberName(e.trim())).join(', ')||'없음'}</span>
+            </div>
+          </div>
+          ${d.maker ? `<div>
+            <p class="text-gray-400 font-bold mb-1 uppercase tracking-wider text-[10px]">제조사/협력사</p>
+            <span class="text-gray-700 font-bold"><i class="ri-building-line text-gray-400 mr-1"></i>${esc(d.maker)}</span>
+          </div>` : ''}
+          ${d.qty ? `<div>
+            <p class="text-gray-400 font-bold mb-1 uppercase tracking-wider text-[10px]">수량</p>
+            <span class="text-gray-700 font-bold">${esc(d.qty)} EA</span>
+          </div>` : ''}
+          ${d.deadline ? `<div>
+            <p class="text-gray-400 font-bold mb-1 uppercase tracking-wider text-[10px]">목표일</p>
+            <span class="text-gray-700 font-bold"><i class="ri-calendar-line text-gray-400 mr-1"></i>${d.deadline}</span>
+          </div>` : ''}
+          <div>
+            <p class="text-gray-400 font-bold mb-1 uppercase tracking-wider text-[10px]">진행률</p>
+            <div class="flex items-center gap-2">
+              <div class="w-20 progress-bar"><div id="hw-detail-progress-fill" class="progress-fill" style="width:${d.progress||0}%"></div></div>
+              <span id="hw-detail-progress-text" class="font-black text-slate-600">${d.progress||0}%</span>
+            </div>
+          </div>
+        </div>
+
+        ${d.tags ? `<div class="flex gap-1 flex-wrap mt-3">${tagHtml(d.tags)}</div>` : ''}
+      </div>
+
+      <div class="flex flex-1 min-h-0 overflow-hidden">
+        <div class="flex-1 overflow-y-auto hide-scrollbar px-8 py-6">
+
+          <!-- BOM (부품 목록) -->
+          <div class="mb-6">
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <i class="ri-list-settings-line text-slate-400"></i> BOM (부품 목록)
+              </h3>
+              <span class="text-[10px] font-black text-slate-600">예상 총원가: ₩${bomTotal.toLocaleString()}</span>
+            </div>
+            <div class="border border-gray-100 r16 overflow-hidden">
+              <table class="w-full text-xs">
+                <thead class="bg-gray-50 text-gray-400 font-black uppercase tracking-wider">
+                  <tr>
+                    <th class="p-2.5 text-left">부품명</th>
+                    <th class="p-2.5 text-left">규격/사양</th>
+                    <th class="p-2.5 text-right">단가</th>
+                    <th class="p-2.5 text-center">수량</th>
+                    <th class="p-2.5 text-right">금액</th>
+                    <th class="p-2.5"></th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                  ${(d.bom||[]).length===0
+                    ? '<tr><td colspan="6" class="text-center py-4 text-gray-300 font-bold">등록된 부품이 없습니다.</td></tr>'
+                    : d.bom.map((r,ri)=>`
+                      <tr class="hover:bg-gray-50/50">
+                        <td class="p-2"><input value="${esc(r.name||'')}" onchange="updateHwBom('${d.id}',${ri},'name',this.value)" class="w-full bg-transparent outline-none font-bold text-gray-700 focus:text-slate-600" placeholder="부품명"></td>
+                        <td class="p-2"><input value="${esc(r.spec||'')}" onchange="updateHwBom('${d.id}',${ri},'spec',this.value)" class="w-full bg-transparent outline-none text-gray-500" placeholder="규격"></td>
+                        <td class="p-2"><input type="number" value="${r.unitPrice||''}" onchange="updateHwBom('${d.id}',${ri},'unitPrice',this.value)" class="w-full bg-transparent outline-none text-right text-gray-700" placeholder="0"></td>
+                        <td class="p-2"><input type="number" value="${r.qty||''}" onchange="updateHwBom('${d.id}',${ri},'qty',this.value)" class="w-full bg-transparent outline-none text-center text-gray-700" placeholder="0"></td>
+                        <td class="p-2 text-right font-black text-slate-600">₩${((Number(r.unitPrice)||0)*(Number(r.qty)||0)).toLocaleString()}</td>
+                        <td class="p-2 text-center"><button onclick="deleteHwBom('${d.id}',${ri})" class="text-gray-300 hover:text-red-400"><i class="ri-close-line"></i></button></td>
+                      </tr>`).join('')}
+                </tbody>
+              </table>
+              <button onclick="addHwBom('${d.id}')" class="w-full py-2 bg-gray-50 text-[10px] font-bold text-gray-400 hover:bg-gray-100 transition"><i class="ri-add-line"></i> 부품 추가</button>
+            </div>
+          </div>
+
+          <!-- 세부 업무 체크리스트 -->
+          <div class="mb-6">
+            <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <i class="ri-checkbox-multiple-line text-slate-400"></i> 세부 업무
+            </h3>
+            <div id="hw-task-list" class="space-y-0.5 mb-2 max-h-64 overflow-y-auto hide-scrollbar"></div>
+            <div onclick="addInlineHwTask('${d.id}')"
+              class="flex items-center gap-2 px-3 py-2 text-gray-300 hover:text-slate-400 hover:bg-slate-50/50 r16 cursor-pointer transition text-xs font-bold">
+              <i class="ri-add-line text-sm"></i> 업무 추가
+            </div>
+          </div>
+
+          <!-- 상세 설명 -->
+          <div class="mb-6">
+            <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <i class="ri-file-text-line text-slate-400"></i> 상세 설명
+            </h3>
+            <div class="prose max-w-none bg-gray-50 r16 p-4 min-h-[60px]">
+              ${(!d.note||!d.note.trim()) ? '<p class="text-gray-400 text-sm italic">내용 없음 — 수정 버튼으로 작성하세요.</p>' : (d.note.startsWith('<') ? d.note : marked.parse(d.note))}
+            </div>
+          </div>
+
+          <!-- 첨부 이미지 -->
+          <div class="mb-6">
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                <i class="ri-image-line text-slate-400"></i> 도면 / 사진
+              </h3>
+              <label class="cursor-pointer bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 r16 text-[10px] font-bold transition">
+                + 사진<input type="file" class="hidden" accept="image/*" onchange="handleHwImage(this,'${d.id}')">
+              </label>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              ${d.images.length===0
+                ? '<p class="text-[10px] text-gray-400 col-span-3">없음</p>'
+                : d.images.map((img, imgIdx)=>`
+                  <div class="relative group aspect-video bg-gray-100 r12 overflow-hidden border border-gray-100 hover:border-slate-300 transition">
+                    <img src="${img}" onclick="openImageViewer('${img}')" class="w-full h-full object-cover cursor-zoom-in">
+                    <button onclick="event.stopPropagation();deleteHwImage('${d.id}',${imgIdx})" class="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/50 hover:bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur-sm"><i class="ri-close-line"></i></button>
+                  </div>`).join('')}
+            </div>
+          </div>
+        </div>
+
+        <!-- 댓글 -->
+        <div class="w-80 shrink-0 border-l border-gray-100 flex flex-col overflow-hidden">
+          <div class="px-5 py-4 border-b border-gray-100">
+            <h3 class="text-xs font-black text-gray-500 uppercase tracking-wider flex items-center gap-2">
+              <i class="ri-chat-3-line text-slate-400"></i> 댓글 <span class="text-gray-400 font-bold">${cList.length}</span>
+            </h3>
+          </div>
+          <div id="hw-cmt-list" class="flex-1 overflow-y-auto hide-scrollbar p-4 space-y-3">
+            ${cList.length ? cList.map(c => {
+              const ctext = esc(c.content).replace(/@([^\s]+)/g,'<span class="text-slate-600 font-bold bg-slate-50 px-1 r5">@$1</span>');
+              return `<div class="group">
+                <div class="flex items-center gap-2 mb-1">
+                  <div class="w-5 h-5 rounded-full bg-slate-600 flex items-center justify-center text-white text-[9px] font-black">${(c.authorName||'?')[0]}</div>
+                  <span class="text-[10px] font-black text-gray-700">${c.authorName}</span>
+                  <span class="text-[9px] text-gray-400 ml-auto">${c.date}</span>
+                </div>
+                <div class="ml-7 bg-gray-50 p-2.5 r12 text-xs text-gray-600 leading-relaxed border border-gray-100">${ctext}</div>
+              </div>`;
+            }).join('') : '<p class="text-xs text-gray-300 text-center py-8 font-bold">댓글이 없습니다</p>'}
+          </div>
+          <div class="p-4 border-t border-gray-100 shrink-0">
+            <div class="relative">
+              <textarea id="hw-cmt-in" rows="3" placeholder="@이름 멘션, 댓글 입력..."
+                class="w-full border border-gray-200 p-3 pr-10 r16 text-xs outline-none resize-none focus:border-slate-400 bg-white"></textarea>
+              <button onclick="submitHwComment('${d.id}')"
+                class="absolute bottom-3 right-3 bg-slate-700 text-white w-7 h-7 rounded-full flex items-center justify-center hover:bg-slate-800 transition">
+                <i class="ri-send-plane-fill text-xs"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  renderHwProjectTasks(d.id);
+  setTimeout(function(){ setupMention('hw-cmt-in'); }, 200);
+  var cl = document.getElementById('hw-cmt-list');
+  if(cl) cl.scrollTop = cl.scrollHeight;
+}
+
+/*── BOM 관리 ──*/
+function addHwBom(id){
+  var d = CACHE.hwProjects.find(x=>x.id===id); if(!d) return;
+  if(!d.bom) d.bom = [];
+  d.bom.push({name:'', spec:'', unitPrice:'', qty:''});
+  FB.patch('hwProjects/'+id, {bom:d.bom});
+  openHwDetail(id);
+}
+function updateHwBom(id, idx, key, val){
+  var d = CACHE.hwProjects.find(x=>x.id===id); if(!d||!d.bom||!d.bom[idx]) return;
+  d.bom[idx][key] = val;
+  FB.patch('hwProjects/'+id, {bom:d.bom});
+  if(key==='unitPrice'||key==='qty') openHwDetail(id); // 금액 재계산
+}
+function deleteHwBom(id, idx){
+  var d = CACHE.hwProjects.find(x=>x.id===id); if(!d||!d.bom) return;
+  d.bom.splice(idx,1);
+  FB.patch('hwProjects/'+id, {bom:d.bom});
+  openHwDetail(id);
+}
+
+/*── 세부 업무 (SW와 동일 로직) ──*/
+function renderHwProjectTasks(id){
+  var d = CACHE.hwProjects.find(function(x){ return String(x.id)===String(id); });
+  if(!d) return;
+  var el = document.getElementById('hw-task-list');
+  if(!el) return;
+  if(!d.tasks || !d.tasks.length){
+    el.innerHTML = '<p class="text-xs text-gray-300 px-3 py-2">아직 세부 업무가 없습니다.</p>';
+    return;
+  }
+  el.innerHTML = d.tasks.map(function(t, idx){
+    var isDone = !!t.done;
+    return '<div class="flex items-center gap-2 px-3 py-1.5 group hover:bg-gray-50 r16 transition" data-hwtask="'+id+'-'+idx+'">' +
+      '<input type="checkbox" class="w-4 h-4 rounded accent-slate-600 cursor-pointer shrink-0" ' +
+        (isDone?'checked':'') + ' onchange="toggleHwProjectTask(\''+id+'\','+idx+',this.checked)">' +
+      '<span ' +
+        (isDone ? '' : 'contenteditable="true" onblur="inlineSaveHwTaskText(\''+id+'\','+idx+',this.innerText.trim())" onkeydown="hwTaskKeydown(event,\''+id+'\','+idx+')" ') +
+        'class="flex-1 text-xs outline-none '+(isDone?'line-through text-gray-400':'text-gray-700 font-medium hover:bg-slate-50/50 focus:bg-slate-50/50 cursor-text')+' px-1 r8 transition min-w-0">' +
+        escBlock(t.text) +
+      '</span>' +
+      '<button onclick="deleteHwProjectTask(\''+id+'\','+idx+')" class="text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition shrink-0"><i class="ri-close-line text-sm"></i></button>' +
+    '</div>';
+  }).join('');
+}
+function inlineSaveHwTaskText(id, idx, newText){
+  if(!newText) return;
+  var d = CACHE.hwProjects.find(x=>String(x.id)===String(id));
+  if(!d||!d.tasks||!d.tasks[idx]) return;
+  if(d.tasks[idx].text === newText) return;
+  d.tasks[idx].text = newText;
+  FB.patch('hwProjects/'+id, {tasks:d.tasks});
+  updateHwProgress(id);
+}
+function hwTaskKeydown(e, id, idx){
+  if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); addInlineHwTask(id, idx+1); }
+  if(e.key==='Backspace' && e.target.innerText===''){ e.preventDefault(); deleteHwProjectTask(id, idx); }
+  if(e.key==='Escape'){ e.target.blur(); }
+}
+function addInlineHwTask(id, insertAfter){
+  var d = CACHE.hwProjects.find(x=>String(x.id)===String(id)); if(!d) return;
+  if(!d.tasks) d.tasks = [];
+  var nt = {text:'', done:false};
+  if(insertAfter !== undefined) d.tasks.splice(insertAfter,0,nt); else d.tasks.push(nt);
+  FB.patch('hwProjects/'+id, {tasks:d.tasks});
+  renderHwProjectTasks(id);
+  updateHwProgress(id);
+  setTimeout(function(){
+    var ti = insertAfter !== undefined ? insertAfter : d.tasks.length-1;
+    var rows = document.querySelectorAll('[data-hwtask="'+id+'-'+ti+'"] [contenteditable]');
+    if(rows.length){ rows[0].focus(); cursorEnd(rows[0]); }
+  }, 40);
+}
+function toggleHwProjectTask(id, idx, done){
+  var d = CACHE.hwProjects.find(x=>String(x.id)===String(id)); if(!d||!d.tasks) return;
+  d.tasks[idx].done = done;
+  FB.patch('hwProjects/'+id, {tasks:d.tasks});
+  renderHwProjectTasks(id);
+  updateHwProgress(id);
+}
+function deleteHwProjectTask(id, idx){
+  var d = CACHE.hwProjects.find(x=>String(x.id)===String(id)); if(!d||!d.tasks) return;
+  d.tasks.splice(idx,1);
+  FB.patch('hwProjects/'+id, {tasks:d.tasks});
+  renderHwProjectTasks(id);
+  updateHwProgress(id);
+}
+function updateHwProgress(id){
+  var d = CACHE.hwProjects.find(x=>x.id===id); if(!d) return;
+  if(!d.tasks || d.tasks.length===0){ d.progress = 0; }
+  else { d.progress = Math.round((d.tasks.filter(t=>t.done).length / d.tasks.length)*100); }
+  FB.patch('hwProjects/'+id, {progress:d.progress});
+  renderHwProjects();
+  var pf = document.getElementById('hw-detail-progress-fill');
+  var pt = document.getElementById('hw-detail-progress-text');
+  if(pf) pf.style.width = d.progress + '%';
+  if(pt) pt.innerText = d.progress + '%';
+}
+
+function inlineSaveHwTitle(id, el){
+  var newTitle = el.innerText.trim();
+  var d = CACHE.hwProjects.find(x=>x.id===id);
+  if(!newTitle){ if(d) el.innerText = d.title; return; }
+  if(d && d.title !== newTitle){
+    d.title = newTitle;
+    FB.patch('hwProjects/'+id, {title:newTitle});
+    renderHwProjects();
+    showToast('✅ 제목 저장됨');
+  }
+}
+
+function submitHwComment(id){
+  var inp = document.getElementById('hw-cmt-in'); if(!inp||!inp.value.trim()) return;
+  var msg = inp.value; inp.value = ''; var cId = genId();
+  var c = {targetId:id, email:USER.email, authorName:USER.name, content:msg, date:nowFmt()};
+  CACHE.comments[cId] = c;
+  FB.set('comments/'+cId, c);
+  openHwDetail(id);
+}
+
+function handleHwImage(input, hwId){
+  if(!input.files || !input.files[0]) return;
+  showToast("⏳ 사진을 압축하여 올리는 중...");
+  compressAndUploadImage(input.files[0], 'hw_images', function(url){
+    var d = CACHE.hwProjects.find(x=>x.id===hwId);
+    if(!d.images) d.images = [];
+    d.images.push(url);
+    FB.patch('hwProjects/'+hwId, {images:d.images});
+    showToast("✅ 사진 업로드 완료!");
+    openHwDetail(hwId);
+  });
+}
+function deleteHwImage(hwId, imgIdx){
+  openCustomConfirm("이미지 삭제", "이 이미지를 삭제하시겠습니까?", function(){
+    var d = CACHE.hwProjects.find(x=>x.id===hwId);
+    if(!d||!d.images) return;
+    d.images.splice(imgIdx,1);
+    FB.patch('hwProjects/'+hwId, {images:d.images});
+    openHwDetail(hwId);
+    showToast("이미지가 삭제되었습니다.");
+  });
+}
+
+function confirmDeleteHw(id){
+  if(!canDelete()) return showToast("삭제 권한은 팀장 이상에게만 있습니다.");
+  openCustomConfirm("프로젝트 삭제", "정말 삭제하시겠습니까?", function(){
+    CACHE.hwProjects = CACHE.hwProjects.filter(x=>x.id!==id);
+    hwSelectedId = null;
+    var panel = document.getElementById('hw-detail-panel');
+    if(panel) panel.innerHTML = `<div class="flex items-center justify-center h-full text-gray-300"><div class="text-center"><i class="ri-cpu-line text-5xl mb-3 block"></i><p class="text-sm font-bold">프로젝트를 선택하면<br>상세 내용이 여기에 표시됩니다</p></div></div>`;
+    renderHwProjects();
+    FB.patch('hwProjects/'+id, {isDeleted:true, deletedAt:nowFmt(), deletedBy:USER.name});
+    showToast("삭제 완료");
+  });
+}
+
+/*── 생성/수정 모달 ──*/
+function openHwModal(data){
+  renderModalRoot('hw-modal','<div class="bg-white r35 modal-content max-w-4xl p-8 md:p-10 shadow-2xl fade-in overflow-y-visible max-h-[90vh]"><h2 class="text-xl md:text-2xl font-black text-slate-700 mb-6"><i class="ri-cpu-line"></i> '+(data?'HW 프로젝트 수정':'HW 프로젝트 생성')+'</h2>'+
+    '<input id="hw-title" type="text" value="'+(data?esc(data.title):'')+'" placeholder="프로젝트/기기명 *" class="w-full border p-4 r24 mb-4 outline-none font-bold text-lg bg-gray-50 focus:border-slate-500">'+
+    '<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">'+
+      '<div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">우선순위</label><select id="hw-priority-select" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50"><option value="P1" '+(data&&data.priority==='P1'?'selected':'')+'>P1 긴급</option><option value="P2" '+(data&&data.priority==='P2'?'selected':'')+'>P2 높음</option><option value="P3" '+((!data||data.priority==='P3')?'selected':'')+'>P3 보통</option><option value="P4" '+(data&&data.priority==='P4'?'selected':'')+'>P4 낮음</option></select></div>'+
+      '<div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">상태</label><select id="hw-status" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50">'+Object.keys(HW_STATUS_META).map(function(s){return'<option value="'+s+'" '+(data&&data.status===s?'selected':'')+'>'+s+'</option>';}).join('')+'</select></div>'+
+      '<div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">목표일</label><input id="hw-deadline-main" type="date" value="'+(data&&data.deadline?data.deadline:'')+'" class="w-full border p-4 r24 outline-none text-sm font-bold bg-gray-50"></div>'+
+    '</div>'+
+    '<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">'+
+      '<div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">제조사 / 협력사</label><input id="hw-maker" type="text" value="'+(data?esc(data.maker||''):'')+'" placeholder="예: ○○전자" class="w-full border p-4 r24 outline-none text-sm bg-gray-50"></div>'+
+      '<div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">리비전 (Rev.)</label><input id="hw-rev" type="text" value="'+(data?esc(data.rev||''):'')+'" placeholder="예: 1.0, A" class="w-full border p-4 r24 outline-none text-sm bg-gray-50"></div>'+
+      '<div><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">수량 (EA)</label><input id="hw-qty" type="number" value="'+(data?esc(data.qty||''):'')+'" placeholder="0" class="w-full border p-4 r24 outline-none text-sm bg-gray-50"></div>'+
+    '</div>'+
+    '<div class="mb-4"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">태그 (쉼표 구분)</label><input id="hw-tags-input" type="text" value="'+(data?esc(data.tags||''):'')+'" placeholder="PCB, 사출, 펌웨어" class="w-full border p-4 r24 outline-none text-sm bg-gray-50"></div>'+
+    '<div class="mb-6 relative z-50"><label class="block text-xs font-bold text-gray-500 mb-2 pl-2">참여 인원</label><div id="hw-assignees-container" class="w-full border p-4 r24 bg-white max-h-32 overflow-y-auto space-y-2 hide-scrollbar shadow-inner relative z-50"></div></div>'+
+    '<label class="block text-xs font-bold text-gray-500 mb-2 pl-2">프로젝트 상세 설명 (마크다운)</label><textarea id="hw-md-editor"></textarea>'+
+    '<input type="hidden" id="hw-edit-id" value="'+(data?data.id:'')+'"><div class="flex justify-end gap-3"><button onclick="closeModal(\'hw-modal\')" class="px-8 py-3.5 bg-gray-100 r35 text-sm font-bold hover:bg-gray-200 transition">취소</button><button onclick="submitHwProject()" class="px-8 py-3.5 bg-slate-700 text-white r35 text-sm font-bold shadow-lg hover:bg-slate-800 transition">'+(data?'수정':'생성')+'</button></div></div>');
+
+  openModal('hw-modal');
+  populateAssignees('hw-assignees-container', data?data.assignees:'');
+
+  setTimeout(function(){
+    if(hwMDE){ hwMDE.toTextArea(); hwMDE = null; }
+    hwMDE = new EasyMDE({
+      element: document.getElementById('hw-md-editor'),
+      autofocus: false,
+      spellChecker: false,
+      placeholder: '마크다운으로 작성하세요...',
+      toolbar: ['bold','italic','heading','|','quote','code','unordered-list','ordered-list','|','link','table','|','preview','side-by-side','fullscreen','|','guide'],
+      status: false,
+      minHeight: '200px'
+    });
+    if(data && data.note) hwMDE.value(data.note || '');
+  }, 150);
+}
+
+function submitHwProject(){
+  var id = document.getElementById('hw-edit-id').value;
+  var title = document.getElementById('hw-title').value.trim();
+  if(!title) return showToast("프로젝트명을 입력하세요.");
+
+  var fields = {
+    title: title,
+    status: document.getElementById('hw-status').value,
+    assignees: getChecked('hw-assignees-container'),
+    deadline: document.getElementById('hw-deadline-main').value,
+    maker: document.getElementById('hw-maker').value,
+    rev: document.getElementById('hw-rev').value,
+    qty: document.getElementById('hw-qty').value,
+    note: hwMDE ? hwMDE.value() : '',
+    tags: document.getElementById('hw-tags-input').value,
+    priority: document.getElementById('hw-priority-select').value
+  };
+
+  if(id){
+    var idx = CACHE.hwProjects.findIndex(x=>x.id===id);
+    if(idx>-1) Object.assign(CACHE.hwProjects[idx], fields);
+    closeModal('hw-modal'); showToast("수정 완료!"); renderHwProjects(); FB.patch('hwProjects/'+id, fields);
+    if(hwSelectedId===id) openHwDetail(id);
+  }else{
+    var newId = genId();
+    var tId = getNextTicketId(CACHE.hwProjects, 'HW');
+    var obj = Object.assign({id:newId, ticketId:tId, images:[], bom:[], tasks:[], progress:0}, fields, {creator:USER.email, timestamp:Date.now()});
+    CACHE.hwProjects.push(obj);
+    closeModal('hw-modal'); showToast("생성 완료 ("+tId+")"); renderHwProjects(); FB.set('hwProjects/'+newId, obj);
   }
 }
